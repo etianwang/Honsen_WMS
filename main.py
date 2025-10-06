@@ -11,7 +11,8 @@ from PyQt6.QtGui import QPixmap, QIcon # 导入用于图标和图片的类
 # 导入功能页面
 from inventory_page import InventoryPage 
 from transaction_page import TransactionPage 
-from settings_page import SettingsPage 
+# [修改] 导入新的设置工具 Widget
+from settings_widget import SettingsWidget 
 
 # --- 资源路径处理函数 ---
 # 定义 Logo 文件名（假设您的 Logo 文件名为 logo.png）
@@ -156,8 +157,9 @@ class MainWindow(QMainWindow):
         ) 
         self.stacked_widget.addWidget(self.transaction_page)
 
-        # 3. 系统设置页面 (使用实际的页面类，包含密码修改功能)
-        self.settings_page = SettingsPage(self.db_path) 
+        # 3. 系统设置页面 
+        # [修改] 现在使用 settings_widget.py 中的 SettingsWidget
+        self.settings_page = SettingsWidget(self.db_path) 
         self.stacked_widget.addWidget(self.settings_page)
 
 

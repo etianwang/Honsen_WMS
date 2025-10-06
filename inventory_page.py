@@ -64,7 +64,7 @@ class InventoryPage(QWidget):
 
         # 定义表头 (注意：ID列是隐藏的)
         self.headers = [
-            "ID", "名称 (Name)", "物品型号 (Ref)", "单位 (Unit)", 
+            "ID", "名称 (Name)", "物品型号 (Ref)", "材料类别","单位 (Unit)", 
             "当前库存", "最小库存", "储存位置", "库存状态"
         ]
         self.inventory_table.setColumnCount(len(self.headers))
@@ -113,11 +113,12 @@ class InventoryPage(QWidget):
             self.inventory_table.setItem(row_index, 0, QTableWidgetItem(str(item['id'])))
             self.inventory_table.setItem(row_index, 1, QTableWidgetItem(item['name']))
             self.inventory_table.setItem(row_index, 2, QTableWidgetItem(item['reference']))
-            self.inventory_table.setItem(row_index, 3, QTableWidgetItem(item['unit']))
-            self.inventory_table.setItem(row_index, 4, QTableWidgetItem(str(current)))
-            self.inventory_table.setItem(row_index, 5, QTableWidgetItem(str(minimum)))
-            self.inventory_table.setItem(row_index, 6, QTableWidgetItem(item['location']))
-            self.inventory_table.setItem(row_index, 7, QTableWidgetItem(status_text))
+            self.inventory_table.setItem(row_index, 3, QTableWidgetItem(item['category']))
+            self.inventory_table.setItem(row_index, 4, QTableWidgetItem(item['unit']))
+            self.inventory_table.setItem(row_index, 5, QTableWidgetItem(str(current)))
+            self.inventory_table.setItem(row_index, 6, QTableWidgetItem(str(minimum)))
+            self.inventory_table.setItem(row_index, 7, QTableWidgetItem(item['location']))
+            self.inventory_table.setItem(row_index, 8, QTableWidgetItem(status_text))
             
             # 应用行颜色：遍历当前行的所有单元格并设置背景色
             for col in range(self.inventory_table.columnCount()):
@@ -175,10 +176,11 @@ class InventoryPage(QWidget):
             'id': int(self.inventory_table.item(row_index, 0).text()),
             'name': self.inventory_table.item(row_index, 1).text(),
             'reference': self.inventory_table.item(row_index, 2).text(),
-            'unit': self.inventory_table.item(row_index, 3).text(),
-            'current_stock': int(self.inventory_table.item(row_index, 4).text()),
-            'min_stock': int(self.inventory_table.item(row_index, 5).text()),
-            'location': self.inventory_table.item(row_index, 6).text()
+            'category': self.inventory_table.item(row_index, 3).text(),
+            'unit': self.inventory_table.item(row_index, 4).text(),
+            'current_stock': int(self.inventory_table.item(row_index, 5).text()),
+            'min_stock': int(self.inventory_table.item(row_index, 6).text()),
+            'location': self.inventory_table.item(row_index, 7).text()
         }
         
         # 弹出编辑对话框

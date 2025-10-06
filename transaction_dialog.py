@@ -61,16 +61,29 @@ class TransactionDialog(QDialog):
         form_layout.addWidget(self.recipient_label, 2, 0, Qt.AlignmentFlag.AlignLeft)
         form_layout.addWidget(self.recipient_entry, 2, 1)
         
-        # D. 项目参考 (QComboBox) - 更改为下拉选择框
+        # D. 项目参考 (QComboBox) - 仅出库时显示 (OUT)
         self.project_label = QLabel("项目 (Project Ref):")
-        # 更改: 使用 QComboBox 
         self.project_combo = QComboBox() 
-        project_options = ["别墅", "办公楼", "基地", "其他"]
+        
+        # 动态从数据库加载项目选项 (使用 db_manager.get_config_options)
+        project_options = db_manager.get_config_options(self.db_path, 'PROJECT')
+        
+        if not project_options:
+            # 如果数据库中没有项目配置，使用默认值
+            project_options = ["", "别墅", "办公楼", "基地", "其他"]
+            
         self.project_combo.addItems(project_options)
         
+        # 将项目字段添加到布局中
         form_layout.addWidget(self.project_label, 3, 0, Qt.AlignmentFlag.AlignLeft)
-        # 更改: 使用 self.project_combo
         form_layout.addWidget(self.project_combo, 3, 1)
+        
+        # --- 核心修改：根据交易类型控制“项目”输入框的可见性 ---
+        if self.type == 'IN':
+            # 入库时隐藏项目字段
+            self.project_label.setVisible(False)
+            self.project_combo.setVisible(False)
+        # ----------------------------------------------------
 
         main_layout.addLayout(form_layout)
         
@@ -110,7 +123,14 @@ class TransactionDialog(QDialog):
         # 2. 获取当前日期时间
         current_datetime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-        # 3. 调用数据库管理器进行事务记录 (包含原子性更新库存)
+        # 3. 确定 project_ref 的值
+        # 只有在出库 (OUT) 时才读取 project_combo 的值，入库 (IN) 时使用空字符串。
+        project_ref = ""
+        if self.type == 'OUT':
+             project_ref=self.project_combo.currentText()
+        # ----------------------------------------------
+
+        # 4. 调用数据库管理器进行事务记录 (包含原子性更新库存)
         success = db_manager.record_transaction(
             db_path=self.db_path,
             item_id=item_id,
@@ -118,8 +138,7 @@ class TransactionDialog(QDialog):
             quantity=quantity,
             date=current_datetime,
             recipient_source=recipient_source,
-            # 更改: 从 QComboBox 中使用 currentText() 获取选定的项目值
-            project_ref=self.project_combo.currentText()
+            project_ref=project_ref # 使用确定的项目引用
         )
         
         if success:

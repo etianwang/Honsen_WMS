@@ -1,3 +1,6 @@
+# login.py
+# 仓库管理系统的登录界面和数据库初始化逻辑。
+
 import sys
 import os
 import sqlite3
@@ -50,7 +53,6 @@ FIXED_DB_PATH = os.path.join(BASE_DIR, DB_FOLDER, DB_FILE)
 def get_resource_path(relative_path):
     """
     获取资源文件的绝对路径，适配开发环境和 PyInstaller 打包环境。
-    【关键修复】使用 sys._MEIPASS 来获取 --onefile 模式下的临时资源路径。
     目的：用于加载通过 --add-data 打包进 EXE 内部的资源。
     """
     if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
@@ -93,7 +95,9 @@ def hash_password(password_plaintext):
 # --- 业务表初始化逻辑 ---
 
 def initialize_all_schema(conn):
-    """检查并创建所有三张表 (admin_user, Inventory, Transactions)，并插入默认管理员账号。"""
+    """
+    检查并创建所有表 (admin_user, Inventory, Transactions, config)，并插入默认管理员账号和配置。
+    """
     cursor = conn.cursor()
     
     try:
@@ -118,7 +122,7 @@ def initialize_all_schema(conn):
         # B. 插入默认管理员账号
         hashed_pass = hash_password(DEFAULT_LOGIN_PASS_PLAINTEXT)
         cursor.execute("INSERT INTO admin_user (username, password) VALUES (?, ?)", 
-                         (DEFAULT_LOGIN_USER, hashed_pass))
+                             (DEFAULT_LOGIN_USER, hashed_pass))
         
         # C. Inventory 表 (库存物品)
         cursor.execute("""
@@ -126,10 +130,12 @@ def initialize_all_schema(conn):
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
                 reference TEXT UNIQUE,
+                category TEXT,
                 unit TEXT,
                 current_stock INTEGER,
                 min_stock INTEGER,
                 location TEXT
+                -- 注意：Inventory 表结构尚未添加 project 字段，后续应在 db_manager 中处理
             )
         """)
         
@@ -146,6 +152,38 @@ def initialize_all_schema(conn):
                 FOREIGN KEY (item_id) REFERENCES Inventory (id)
             )
         """)
+        
+        # E. Config 表 (存放自定义配置，如 Location, Unit, Project, Category 选项)
+        cursor.execute("""
+            CREATE TABLE config (
+                id INTEGER PRIMARY KEY,
+                category TEXT NOT NULL,
+                value TEXT NOT NULL,
+                UNIQUE(category, value) 
+            );
+        """)
+
+        # F. 插入默认存放位置选项
+        default_locations = ["基地仓库", "大仓库", "别墅", "办公楼", "公寓", "其他"]
+        for loc in default_locations:
+             # 使用 INSERT OR IGNORE 确保幂等性（虽然在全新数据库中不需要，但更安全）
+             cursor.execute("INSERT OR IGNORE INTO config (category, value) VALUES (?, ?)", ('LOCATION', loc))
+             
+        # G. 插入默认项目选项
+        default_projects = ["日常维护", "别墅", "办公楼", "公寓", "基地", "通用"]
+        for proj in default_projects:
+             cursor.execute("INSERT OR IGNORE INTO config (category, value) VALUES (?, ?)", ('PROJECT', proj))
+
+        # H. 插入默认单位选项 (新增)
+        default_units = ["个", "件", "套", "米", "卷", "箱", "KG", "升", "桶","其他"]
+        for unit in default_units:
+             cursor.execute("INSERT OR IGNORE INTO config (category, value) VALUES (?, ?)", ('UNIT', unit))
+
+        # I. 插入默认材料类别选项 (新增)
+        default_categories = ["办公用品", "工具耗材", "安防劳保", "电器设备", "建筑材料", "油漆涂料", "五金件", "管件", "电缆线材", "其他"]
+        for cat in default_categories:
+             cursor.execute("INSERT OR IGNORE INTO config (category, value) VALUES (?, ?)", ('CATEGORY', cat))
+            
         
         conn.commit()
         cursor.close()
@@ -267,8 +305,6 @@ class LoginWindow(QWidget):
         grid.setSpacing(10)
         
         row = 0
-        
-        # ... (以下代码与之前版本保持一致)
         
         # --- 数据库文件配置标题 ---
         db_title = QLabel("--- 数据库文件配置 (固定路径) ---")
@@ -432,6 +468,10 @@ class LoginWindow(QWidget):
 
 
 if __name__ == '__main__':
+    # 确保应用程序在运行之前设置了正确的环境
+    if not os.environ.get('QT_SCALE_FACTOR'):
+        os.environ['QT_SCALE_FACTOR'] = '1.0' # 确保默认缩放为 100%
+        
     app = QApplication(sys.argv)
     window = LoginWindow()
     window.show()
