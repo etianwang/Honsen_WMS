@@ -1,0 +1,541 @@
+import sqlite3
+import hashlib
+from typing import List, Dict, Union, Optional
+from datetime import datetime # 导入 datetime 用于事务记录
+# 假设项目中存在 data_utility.py 用于处理文件IO (用于导入导出功能)
+try:
+    import data_utility 
+except ImportError:
+    pass # 仅在 db_manager 中忽略导入错误，因为它的核心是数据库操作
+
+# --- 辅助函数 ---
+
+def hash_password(password: str) -> str:
+    """对密码进行 SHA256 哈希处理"""
+    # 注意：此方法用于 settings_page.py 的密码存储（SHA256）
+    return hashlib.sha256(password.encode()).hexdigest()
+
+# --- 数据库初始化和用户管理 ---
+
+def initialize_database(db_path: str):
+    """创建数据库文件，初始化 Inventory, Transactions 和 admin_user 表"""
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # 1. 管理员用户表 (已修正为 admin_user，并调整了 ID 结构)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS admin_user (
+                id INTEGER PRIMARY KEY,
+                username TEXT NOT NULL UNIQUE,
+                password TEXT NOT NULL
+            )
+        """)
+        
+        # 2. Inventory 表 (物品库存)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS inventory (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                reference TEXT UNIQUE,
+                unit TEXT,
+                current_stock INTEGER NOT NULL DEFAULT 0,
+                min_stock INTEGER NOT NULL DEFAULT 0,
+                location TEXT
+            )
+        """)
+        
+        # 3. Transactions 表 (交易记录)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                item_id INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                type TEXT NOT NULL CHECK(type IN ('IN', 'OUT', 'REVERSAL')),
+                quantity INTEGER NOT NULL,
+                recipient_source TEXT,
+                project_ref TEXT,
+                FOREIGN KEY (item_id) REFERENCES inventory(id)
+            )
+        """)
+
+        # 检查并插入初始管理员用户 (如果不存在)
+        # 使用修正后的表名 admin_user
+        cursor.execute("SELECT id FROM admin_user WHERE username = 'admin'")
+        if cursor.fetchone() is None:
+            initial_password_hash = hash_password('123456') # 默认密码
+            cursor.execute("INSERT INTO admin_user (username, password) VALUES (?, ?)", 
+                           ('admin', initial_password_hash))
+            
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"数据库初始化错误: {e}")
+    finally:
+        if conn:
+            conn.close()
+
+
+def check_admin_credentials(db_path: str, username: str, password: str) -> bool:
+    """检查管理员用户名和密码是否匹配"""
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # 使用修正后的表名 admin_user
+        cursor.execute("SELECT password FROM admin_user WHERE username = ?", (username,))
+        result = cursor.fetchone()
+        
+        if result:
+            stored_password_hash = result[0]
+            input_password_hash = hash_password(password)
+            return stored_password_hash == input_password_hash
+        return False
+    except sqlite3.Error as e:
+        print(f"数据库错误：认证检查失败：{e}")
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def update_admin_password(db_path: str, new_password: str) -> bool:
+    """
+    更新数据库中的管理员密码。假设管理员 ID 为 1。
+    """
+    hashed_password = hash_password(new_password)
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # 使用修正后的表名 admin_user
+        cursor.execute("""
+            UPDATE admin_user SET password = ? WHERE id = 1
+        """, (hashed_password,))
+        
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"数据库错误：更新密码失败：{e}")
+        return False
+    finally:
+        if conn:
+            conn.close()
+            
+# --- Inventory CRUD 操作 ---
+
+def insert_inventory_item(db_path: str, name: str, reference: str, unit: str, current_stock: int, min_stock: int, location: str) -> Optional[int]:
+    """
+    更新后的函数：插入新的库存物品，接收 current_stock 参数。
+    """
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO inventory (name, reference, unit, current_stock, min_stock, location) 
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (name, reference, unit, current_stock, min_stock, location))
+        conn.commit()
+        return cursor.lastrowid
+    except sqlite3.IntegrityError:
+        print("错误：名称或参考编号已存在。")
+        return None 
+    except sqlite3.Error as e:
+        print(f"数据库错误：插入物品失败：{e}")
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+def update_inventory_item(db_path: str, item_id: int, name: str, reference: str, unit: str, min_stock: int, location: str) -> bool:
+    """更新库存物品的非库存字段"""
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE inventory SET name=?, reference=?, unit=?, min_stock=?, location=?
+            WHERE id=?
+        """, (name, reference, unit, min_stock, location, item_id))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        print("错误：名称或参考编号已存在。")
+        return False
+    except sqlite3.Error as e:
+        print(f"数据库错误：更新物品失败：{e}")
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+def delete_inventory_item(db_path: str, item_id: int) -> bool:
+    """
+    删除库存物品及所有相关交易记录。
+    修复：确保先删除交易记录以避免外键冲突。
+    """
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # 1. 删除关联的交易记录
+        cursor.execute("DELETE FROM transactions WHERE item_id=?", (item_id,))
+        # 2. 删除库存项
+        cursor.execute("DELETE FROM inventory WHERE id=?", (item_id,))
+        
+        conn.commit()
+        return cursor.rowcount > 0
+    except sqlite3.Error as e:
+        print(f"数据库错误：删除物品失败：{e}")
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+def get_all_inventory(db_path: str) -> List[Dict[str, Union[int, str]]]:
+    """获取所有库存物品数据"""
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM inventory ORDER BY name")
+        return [dict(row) for row in cursor.fetchall()]
+    except sqlite3.Error as e:
+        print(f"数据库错误：获取库存失败：{e}")
+        return []
+    finally:
+        if conn:
+            conn.close()
+            
+def get_inventory_item_by_id(db_path: str, item_id: int) -> Optional[Dict]:
+    """根据 ID 获取单个库存物品详情"""
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM inventory WHERE id=?", (item_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    except sqlite3.Error as e:
+        print(f"数据库错误：获取单个库存项失败：{e}")
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+def get_inventory_names(db_path: str) -> List[Dict[str, Union[int, str]]]:
+    """获取所有物品的 ID, Name, Reference, Unit, Current_Stock，用于对话框下拉列表"""
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, name, reference, unit, current_stock FROM inventory ORDER BY name")
+        return [dict(row) for row in cursor.fetchall()]
+    except sqlite3.Error as e:
+        print(f"数据库错误：获取物品名称失败：{e}")
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+# --- 用于导出的数据获取方法 ---
+
+def get_inventory_for_export(db_path: str) -> List[Dict[str, Union[int, str]]]:
+    """获取所有库存物品数据，用于导出 CSV。"""
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        # 导出需要的列
+        cursor.execute("""
+            SELECT name, reference, unit, current_stock, min_stock, location 
+            FROM inventory 
+            ORDER BY name
+        """)
+        return [dict(row) for row in cursor.fetchall()]
+    except sqlite3.Error as e:
+        print(f"数据库错误：获取库存失败：{e}")
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+def get_transactions_for_export(db_path: str) -> List[Dict[str, Union[int, str]]]:
+    """获取所有交易记录，包含关联的物品信息，用于导出 CSV。"""
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        # 导出需要的列
+        cursor.execute("""
+            SELECT 
+                t.date, t.type, t.quantity, t.recipient_source, t.project_ref,
+                i.name AS item_name, i.reference AS item_reference
+            FROM transactions t
+            JOIN inventory i ON t.item_id = i.id
+            ORDER BY t.date DESC
+        """)
+        return [dict(row) for row in cursor.fetchall()]
+    except sqlite3.Error as e:
+        print(f"数据库错误：获取交易历史失败：{e}")
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
+# --- 用于批量导入的数据库方法 ---
+
+def batch_import_inventory(db_path: str, items: List[Dict]) -> Dict[str, int]:
+    """
+    批量导入或更新库存物品。使用 'reference' 作为唯一键。
+    如果 'reference' 存在，则更新名称、单位、最小库存和位置。
+    如果 'reference' 不存在，则插入新记录 (current_stock 设为 0)。
+    返回包含操作统计的字典。
+    """
+    conn = None
+    stats = {'inserted': 0, 'updated': 0, 'failed': 0}
+    
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        # SQL for UPDATE (基于 reference)
+        # 注意：导入时我们只更新基本信息，不改变 current_stock，除非是新插入的记录（设为0）
+        update_sql = """
+            UPDATE inventory 
+            SET name=?, unit=?, min_stock=?, location=?
+            WHERE reference=?
+        """
+        # SQL for INSERT (如果 reference 不存在)
+        insert_sql = """
+            INSERT INTO inventory (name, reference, unit, current_stock, min_stock, location) 
+            VALUES (?, ?, ?, ?, ?, ?)
+        """
+        
+        for item in items:
+            try:
+                # 1. 尝试更新
+                cursor.execute(
+                    update_sql, 
+                    (item['name'], item['unit'], item['min_stock'], item['location'], item['reference'])
+                )
+                
+                if cursor.rowcount > 0:
+                    stats['updated'] += 1
+                else:
+                    # 2. 如果没有更新任何行，则插入新行 (current_stock 默认为 0)
+                    # 导入时，新插入的 current_stock 应该来自导入数据，如果数据中没有，则为 0。
+                    initial_stock = item.get('current_stock', 0) # 如果 CSV 中有此字段，可以使用它作为初始值
+                    
+                    cursor.execute(
+                        insert_sql, 
+                        (item['name'], item['reference'], item['unit'], initial_stock, item['min_stock'], item['location'])
+                    )
+                    stats['inserted'] += 1
+
+            except sqlite3.IntegrityError as e:
+                print(f"导入失败的项目 ({item.get('reference', 'N/A')}) - 完整性错误: {e}")
+                stats['failed'] += 1
+            except Exception as e:
+                print(f"导入失败的项目 ({item.get('reference', 'N/A')}) - 其他错误: {e}")
+                stats['failed'] += 1
+        
+        conn.commit()
+    except sqlite3.Error as e:
+        conn.rollback()
+        stats['failed'] = len(items) - stats['inserted'] - stats['updated']
+        print(f"数据库批量导入错误: {e}")
+    finally:
+        if conn:
+            conn.close()
+            
+    return stats
+
+
+# --- Transactions CRUD/业务逻辑 ---
+
+def record_transaction(db_path: str, item_id: int, date: str, type: str, quantity: int, recipient_source: str, project_ref: str) -> bool:
+    """
+    记录交易并原子性地更新库存。
+    返回 False 如果库存不足 (OUT) 或发生数据库错误。
+    """
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # 1. 检查库存 (仅限 OUT 类型)
+        if type == 'OUT':
+            cursor.execute("SELECT current_stock FROM inventory WHERE id = ?", (item_id,))
+            current_stock = cursor.fetchone()
+            if current_stock is None or current_stock[0] < quantity:
+                return False # 库存不足
+        
+        # 2. 更新库存
+        stock_change = quantity if type == 'IN' else -quantity
+        cursor.execute("""
+            UPDATE inventory SET current_stock = current_stock + ? WHERE id = ?
+        """, (stock_change, item_id))
+
+        # 3. 记录交易
+        cursor.execute("""
+            INSERT INTO transactions (item_id, date, type, quantity, recipient_source, project_ref)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (item_id, date, type, quantity, recipient_source, project_ref))
+        
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"数据库错误：交易记录失败：{e}")
+        if conn:
+            conn.rollback() # 失败时回滚所有操作
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_transactions_history(
+    db_path: str, 
+    start_date: Optional[str] = None, 
+    end_date: Optional[str] = None, 
+    tx_type: Optional[str] = None, 
+    item_search: Optional[str] = None
+) -> List[Dict[str, Union[int, str]]]:
+    """
+    获取交易记录，支持按日期范围、交易类型和物品名称/编号进行筛选。
+    
+    通过 JOIN Inventory 表来获取物品名称、参考编号和位置信息。
+    
+    参数:
+    - start_date: 筛选的起始日期 (格式 'YYYY-MM-DD')
+    - end_date: 筛选的结束日期 (格式 'YYYY-MM-DD')
+    - tx_type: 交易类型 ('IN', 'OUT', 'REVERSAL')，忽略大小写
+    - item_search: 物品名称或参考编号的搜索关键词
+    
+    返回:
+    - 符合筛选条件的交易记录列表。
+    """
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # 基本查询语句：连接 transactions 和 inventory 表
+        query = """
+            SELECT 
+                t.id, t.date, t.type, t.quantity, t.recipient_source, t.project_ref,
+                i.name AS item_name, i.reference AS item_ref, 
+                i.location AS location  -- <-- 新增：从 Inventory 表获取 location 字段
+            FROM transactions t
+            JOIN inventory i ON t.item_id = i.id
+            WHERE 1=1
+        """
+        params = []
+        
+        # 1. 日期筛选 (使用 DATE() 函数确保精确比较日期部分)
+        if start_date:
+            query += " AND DATE(t.date) >= ?"
+            params.append(start_date)
+            
+        if end_date:
+            query += " AND DATE(t.date) <= ?"
+            params.append(end_date)
+            
+        # 2. 交易类型筛选 (转换为大写进行比较)
+        if tx_type and tx_type.upper() != 'ALL': # 假设 'ALL' 表示不过滤类型
+            query += " AND UPPER(t.type) = ?"
+            params.append(tx_type.upper())
+            
+        # 3. 物品名称或编号筛选
+        if item_search:
+            search_pattern = f'%{item_search}%'
+            # 搜索物品的名称或参考编号 (忽略大小写)
+            query += " AND (UPPER(i.name) LIKE UPPER(?) OR UPPER(i.reference) LIKE UPPER(?))"
+            params.extend([search_pattern, search_pattern])
+
+        # 排序：按日期降序
+        query += " ORDER BY t.date DESC"
+        
+        cursor.execute(query, tuple(params))
+        return [dict(row) for row in cursor.fetchall()]
+    except sqlite3.Error as e:
+        print(f"数据库错误：获取交易历史失败：{e}")
+        return []
+    finally:
+        if conn:
+            conn.close()
+            
+            
+def reverse_transaction(db_path: str, tx_id: int) -> bool:
+    """
+    冲销交易：读取原交易，创建一笔反向交易，并原子性地更新库存。
+    """
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # 1. 获取原始交易详情
+        cursor.execute("SELECT item_id, type, quantity FROM transactions WHERE id = ?", (tx_id,))
+        original_tx = cursor.fetchone()
+        
+        if not original_tx:
+            return False 
+        
+        item_id, original_type, original_qty = original_tx
+        
+        # 2. 确定反向操作类型和数量
+        if original_type == 'IN':
+            reverse_type = 'OUT'
+            stock_change = -original_qty
+            recipient_source = "冲销-IN"
+        elif original_type == 'OUT':
+            reverse_type = 'IN'
+            stock_change = original_qty
+            recipient_source = "冲销-OUT"
+        else: # 避免冲销冲销记录
+            return False 
+
+        # 3. 检查库存 (仅限反向操作是 OUT 时)
+        if reverse_type == 'OUT':
+            cursor.execute("SELECT current_stock FROM inventory WHERE id = ?", (item_id,))
+            current_stock = cursor.fetchone()
+            if current_stock is None or current_stock[0] < original_qty:
+                return False # 库存不足以冲销
+                
+        # 4. 更新库存
+        cursor.execute("""
+            UPDATE inventory SET current_stock = current_stock + ? WHERE id = ?
+        """, (stock_change, item_id))
+        
+        # 5. 记录反向交易
+        current_datetime = datetime.now().strftime('%Y-%m-%d %H:%M:%S') 
+        project_ref = f"Reversed TX:{tx_id}" # 记录被冲销的交易ID
+        
+        cursor.execute("""
+            INSERT INTO transactions (item_id, date, type, quantity, recipient_source, project_ref)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (item_id, current_datetime, reverse_type, original_qty, recipient_source, project_ref))
+        
+        conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"数据库错误：冲销失败：{e}")
+        if conn:
+            conn.rollback()
+        return False
+    finally:
+        if conn:
+            conn.close()
