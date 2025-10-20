@@ -1,3 +1,4 @@
+# settings_widget.py
 import sqlite3
 import sys
 import os
@@ -413,8 +414,8 @@ class DataManagementPage(QWidget):
         
         if filepath:
             data = db_manager.get_inventory_for_export(self.db_path)
-            # 确保导出字段与导入字段一致
-            headers = ["name", "reference", "unit", "current_stock", "min_stock", "location", "project", "notes"] 
+            # 确保导出字段与导入字段一致，包含 category（材料类别）
+            headers = ["name", "reference", "category", "unit", "current_stock", "min_stock", "location"] 
             
             if data_utility.export_to_csv(data, filepath, headers):
                 QMessageBox.information(self, "导出成功", f"库存清单已成功导出到:\n{filepath}")

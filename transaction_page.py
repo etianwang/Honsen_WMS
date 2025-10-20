@@ -1,10 +1,11 @@
+# transaction_page.py
 import sys
-import csv # 导入 csv 模块用于更规范的 CSV 写入
+import csv
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
     QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit,
     QMessageBox, QDialog, QApplication, QLabel,
-    QDateEdit, QComboBox, QFileDialog # 导入 QFileDialog 用于导出
+    QDateEdit, QComboBox, QFileDialog
 )
 from PyQt6.QtCore import Qt, QDateTime, QDate 
 from PyQt6.QtGui import QColor
@@ -16,39 +17,43 @@ from transaction_dialog import TransactionDialog
 
 class TransactionPage(QWidget):
     """
-    交易记录界面：展示 Transactions 表数据，并提供筛选、入库/出库和冲销操作。
+    交易记录界面：展示 Transactions 表数据，并提供筛选、入库/出库、冲销和删除操作。
     增加了类别、地点和项目筛选和底部统计功能，以及导出功能。
     """
     def __init__(self, db_path: str, inventory_page_ref): 
         super().__init__()
         self.db_path = db_path
-        self.inventory_page_ref = inventory_page_ref # 存储对库存页面的直接引用
-        self.current_data: List[Dict[str, Union[int, str]]] = [] # 存储当前筛选后的数据
+        self.inventory_page_ref = inventory_page_ref
+        self.current_data: List[Dict[str, Union[int, str]]] = []
         self.init_ui()
-        self.load_transaction_data() # 初始加载数据
+        self.load_transaction_data()
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
         
-        # --- 1. 顶部操作栏 (入库/出库/冲销) ---
+        # --- 1. 顶部操作栏 (入库/出库/冲销/删除) ---
         toolbar_layout = QHBoxLayout()
         
         self.in_btn = QPushButton("入库 (IN)")
         self.out_btn = QPushButton("出库 (OUT)")
         self.reverse_btn = QPushButton("冲销交易")
+        self.delete_btn = QPushButton("删除记录")  # 新增删除按钮
         
         self.in_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 8px;")
         self.out_btn.setStyleSheet("background-color: #f44336; color: white; font-weight: bold; padding: 8px;")
         self.reverse_btn.setStyleSheet("background-color: #ff9800; color: white; padding: 8px;")
+        self.delete_btn.setStyleSheet("background-color: #9E9E9E; color: white; padding: 8px; font-weight: bold;")  # 灰色按钮
         
         self.in_btn.clicked.connect(lambda: self.open_transaction_dialog('IN'))
         self.out_btn.clicked.connect(lambda: self.open_transaction_dialog('OUT'))
         self.reverse_btn.clicked.connect(self.reverse_transaction_action)
+        self.delete_btn.clicked.connect(self.delete_transaction_action)  # 连接删除槽函数
 
         toolbar_layout.addWidget(self.in_btn)
         toolbar_layout.addWidget(self.out_btn)
         toolbar_layout.addStretch(1)
         toolbar_layout.addWidget(self.reverse_btn)
+        toolbar_layout.addWidget(self.delete_btn)  # 添加到布局
         
         main_layout.addLayout(toolbar_layout)
         
@@ -70,7 +75,7 @@ class TransactionPage(QWidget):
         self.end_date_edit.setDisplayFormat("yyyy-MM-dd")
         filter_row1.addWidget(self.end_date_edit)
         
-        filter_row1.addStretch(1) # 增加弹性空间
+        filter_row1.addStretch(1)
         
         filter_container.addLayout(filter_row1)
 
@@ -134,8 +139,8 @@ class TransactionPage(QWidget):
 
         # 定义表头
         self.headers = [
-            "ID", "日期/时间", "物品名称", "物品型号", 
-            "储存位置", "类型", "数量", "接收人/来源", "项目"
+            "ID", "日期/时间", "      物品名称      ", "物品型号/规格", 
+            "储存位置/项目仓库", "物品类型", "物品数量", "接收人/来源", "出库项目"
         ]
         self.transaction_table.setColumnCount(len(self.headers))
         self.transaction_table.setHorizontalHeaderLabels(self.headers)
@@ -143,7 +148,8 @@ class TransactionPage(QWidget):
         # 调整列宽
         self.transaction_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.transaction_table.horizontalHeader().resizeSection(1, 160)
-        self.transaction_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self.transaction_table.horizontalHeader().resizeSection(2, 300)
+        self.transaction_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         self.transaction_table.horizontalHeader().resizeSection(4, 120) 
         
         main_layout.addWidget(self.transaction_table)
@@ -156,6 +162,11 @@ class TransactionPage(QWidget):
     # ----------------------------------------
     # --- 筛选和数据加载逻辑 ---
     # ----------------------------------------
+    
+    def refresh_and_apply_filters(self):
+        """刷新筛选选项并应用筛选（用户点击按钮时调用）"""
+        self._refresh_filter_dropdowns()
+        self.apply_filters()
 
     def apply_filters(self):
         """读取筛选控件的值并加载数据"""
@@ -184,9 +195,85 @@ class TransactionPage(QWidget):
             location=location, 
             project=project 	
         )
+    
+    def _refresh_filter_dropdowns(self):
+        """刷新筛选下拉框的选项（从实际库存数据中提取）"""
+        # 保存当前选择
+        current_category = self.category_filter_combo.currentText()
+        current_location = self.location_filter_combo.currentText()
+        current_project = self.project_filter_combo.currentText()
+        
+        try:
+            # ⭐ 从数据库获取所有库存物品
+            all_inventory = db_manager.get_all_inventory(self.db_path)
+            if all_inventory is None:
+                all_inventory = []
+            
+            # ⭐ 从库存中提取所有唯一的类别
+            categories = set()
+            for item in all_inventory:
+                category = item.get('category', '').strip()
+                if category:
+                    categories.add(category)
+            category_options = ["ALL"] + sorted(list(categories))
+            
+            # ⭐ 从库存中提取所有唯一的地点
+            locations = set()
+            for item in all_inventory:
+                location = item.get('location', '').strip()
+                if location:
+                    locations.add(location)
+            location_options = ["ALL"] + sorted(list(locations))
+            
+            # ⭐ 从交易记录中提取所有唯一的项目
+            all_transactions = db_manager.get_transactions_history(self.db_path)
+            if all_transactions is None:
+                all_transactions = []
+            
+            projects = set()
+            for tx in all_transactions:
+                project = tx.get('project_ref', '').strip()
+                # 排除冲销记录和空值
+                if project and not project.startswith('Reversed TX:'):
+                    projects.add(project)
+            project_options = ["ALL"] + sorted(list(projects))
+            
+        except Exception as e:
+            print(f"刷新筛选选项时出错: {e}")
+            # 出错时使用默认值
+            category_options = ["ALL"]
+            location_options = ["ALL"]
+            project_options = ["ALL"]
+        
+        # 更新类别下拉框
+        self.category_filter_combo.clear()
+        self.category_filter_combo.addItems(category_options)
+        
+        # 更新地点下拉框
+        self.location_filter_combo.clear()
+        self.location_filter_combo.addItems(location_options)
+        
+        # 更新项目下拉框
+        self.project_filter_combo.clear()
+        self.project_filter_combo.addItems(project_options)
+        
+        # 尝试恢复之前的选择
+        cat_index = self.category_filter_combo.findText(current_category)
+        if cat_index >= 0:
+            self.category_filter_combo.setCurrentIndex(cat_index)
+        
+        loc_index = self.location_filter_combo.findText(current_location)
+        if loc_index >= 0:
+            self.location_filter_combo.setCurrentIndex(loc_index)
+        
+        proj_index = self.project_filter_combo.findText(current_project)
+        if proj_index >= 0:
+            self.project_filter_combo.setCurrentIndex(proj_index)
         
     def load_transaction_data(self):
         """初始加载数据"""
+        # 首次加载时先刷新筛选选项
+        self._refresh_filter_dropdowns()
         self.apply_filters()
 
 
@@ -287,7 +374,11 @@ class TransactionPage(QWidget):
         dialog = TransactionDialog(self.db_path, type, self)
         
         if dialog.exec() == QDialog.DialogCode.Accepted: 
+            # 刷新筛选框选项
+            self._refresh_filter_dropdowns()
+            # 应用当前筛选条件刷新表格
             self.apply_filters()
+            # 刷新库存页面
             if self.inventory_page_ref:
                 self.inventory_page_ref.load_inventory_data()
             
@@ -316,6 +407,7 @@ class TransactionPage(QWidget):
         if reply == QMessageBox.StandardButton.Yes:
             if db_manager.reverse_transaction(self.db_path, tx_id):
                 QMessageBox.information(self, "成功", "交易冲销成功，已生成反向交易记录。")
+                self._refresh_filter_dropdowns()
                 self.apply_filters()
                 if self.inventory_page_ref:
                     self.inventory_page_ref.load_inventory_data()
@@ -323,8 +415,58 @@ class TransactionPage(QWidget):
                 QMessageBox.critical(self, "冲销失败", "冲销失败！可能是库存不足以进行反向操作。")
 
 
+    def delete_transaction_action(self):
+        """删除选中交易记录的槽函数（新增）"""
+        selected_rows = self.transaction_table.selectionModel().selectedRows()
+        if not selected_rows:
+            QMessageBox.warning(self, "警告", "请先选择要删除的交易记录。")
+            return
+            
+        row_index = selected_rows[0].row()
+        tx_id = int(self.transaction_table.item(row_index, 0).text())
+        tx_type = self.transaction_table.item(row_index, 5).text()
+        tx_date = self.transaction_table.item(row_index, 1).text()
+        item_name = self.transaction_table.item(row_index, 2).text()
+        quantity = self.transaction_table.item(row_index, 6).text()
+        
+        # 构建详细的确认信息
+        if tx_type == 'IN':
+            effect_msg = f"删除此入库记录将从库存中扣除 {quantity} 单位。"
+        elif tx_type == 'OUT':
+            effect_msg = f"删除此出库记录将向库存中返还 {quantity} 单位。"
+        elif tx_type == 'REVERSAL':
+            effect_msg = "不建议删除冲销记录。建议删除原始交易记录。"
+        else:
+            effect_msg = ""
+        
+        reply = QMessageBox.question(
+            self, 
+            "确认删除交易记录", 
+            f"您确定要删除以下交易记录吗？\n\n"
+            f"ID: {tx_id}\n"
+            f"类型: {tx_type}\n"
+            f"物品: {item_name}\n"
+            f"数量: {quantity}\n"
+            f"日期: {tx_date}\n\n"
+            f"⚠️ {effect_msg}\n\n"
+            f"此操作不可恢复！",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No  # 默认选中"否"
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            if db_manager.delete_transaction(self.db_path, tx_id):
+                QMessageBox.information(self, "删除成功", "交易记录已删除，库存已返还。")
+                self._refresh_filter_dropdowns()
+                self.apply_filters()
+                if self.inventory_page_ref:
+                    self.inventory_page_ref.load_inventory_data()
+            else:
+                QMessageBox.critical(self, "删除失败", "删除失败！可能是库存不足以返还，或数据库发生错误。")
+
+
     # ----------------------------------------
-    # --- 导出功能 (更新) ---
+    # --- 导出功能 ---
     # ----------------------------------------
     def export_filtered_transactions_action(self):
         """将当前筛选结果导出为 CSV 文件，并弹出保存路径选择框。"""
@@ -334,7 +476,6 @@ class TransactionPage(QWidget):
         
         # 弹出文件保存对话框
         default_filename = f"transactions_export_{QDate.currentDate().toString('yyyyMMdd')}.csv"
-        # 使用 QFileDialog 获取保存路径
         filepath, _ = QFileDialog.getSaveFileName(
             self, 
             "导出筛选结果为 CSV", 
@@ -343,7 +484,6 @@ class TransactionPage(QWidget):
         )
 
         if not filepath:
-            # 用户取消了保存操作
             return
         
         # 定义 CSV 头部和对应的字典键
@@ -358,28 +498,21 @@ class TransactionPage(QWidget):
         
         # 写入文件
         try:
-            # 使用 'w' 模式和 'utf-8' 编码来确保中文正确显示
             with open(filepath, 'w', encoding='utf-8', newline='') as csvfile:
-                # 使用 csv 模块进行写入，处理引号和逗号等特殊字符
                 writer = csv.writer(csvfile)
-                
-                # 写入头部
                 writer.writerow(csv_headers)
                 
-                # 写入数据行
                 for tx in self.current_data:
                     row = [tx.get(key, '') for key in data_keys]
                     writer.writerow(row)
             
-            # 成功反馈
             QMessageBox.information(self, "导出成功", f"筛选结果已成功导出到：\n**{filepath}**")
             
         except Exception as e:
-            # 失败反馈
             QMessageBox.critical(self, "导出失败", f"文件写入失败：\n{str(e)}")
 
 
-# --- 暂时不需要运行 ---
+# --- 测试代码 ---
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     sys.exit(0)

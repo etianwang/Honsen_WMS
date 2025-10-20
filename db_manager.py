@@ -74,7 +74,7 @@ def initialize_database(db_path: str):
                 type TEXT NOT NULL CHECK(type IN ('IN', 'OUT', 'REVERSAL')),
                 quantity INTEGER NOT NULL,
                 recipient_source TEXT,
-                project_ref TEXT, -- 注意：交易记录表保留 project_ref 用于记录交易发生时的项目
+                project_ref TEXT,
                 FOREIGN KEY (item_id) REFERENCES inventory(id)
             )
         """)
@@ -548,7 +548,7 @@ def get_transactions_history(
                 t.id, t.date, t.type, t.quantity, t.recipient_source, t.project_ref,
                 i.name AS item_name, i.reference AS item_ref, 
                 i.location AS location,
-                i.category AS category -- 新增：提取物品类别
+                i.category AS category
             FROM transactions t
             JOIN inventory i ON t.item_id = i.id
             WHERE 1=1
@@ -565,14 +565,13 @@ def get_transactions_history(
             params.append(end_date)
             
         # 2. 交易类型筛选 (转换为大写进行比较)
-        if tx_type and tx_type.upper() != 'ALL': # 假设 'ALL' 表示不过滤类型
+        if tx_type and tx_type.upper() != 'ALL':
             query += " AND UPPER(t.type) = ?"
             params.append(tx_type.upper())
             
         # 3. 物品名称或编号筛选
         if item_search:
             search_pattern = f'%{item_search}%'
-            # 搜索物品的名称或参考编号 (忽略大小写)
             query += " AND (UPPER(i.name) LIKE UPPER(?) OR UPPER(i.reference) LIKE UPPER(?))"
             params.extend([search_pattern, search_pattern])
 
@@ -659,6 +658,109 @@ def reverse_transaction(db_path: str, tx_id: int) -> bool:
         return True
     except sqlite3.Error as e:
         print(f"数据库错误：冲销失败：{e}")
+        if conn:
+            conn.rollback()
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def delete_transaction(db_path: str, tx_id: int) -> bool:
+    """
+    删除交易记录并返还库存。
+    - 如果是 IN 记录：从库存中减去相应数量（因为入库被取消）
+    - 如果是 OUT 记录：向库存中增加相应数量（因为出库被取消）
+    - 如果是 REVERSAL 记录：不建议删除，应该删除原始交易
+    
+    :param db_path: 数据库路径
+    :param tx_id: 要删除的交易记录 ID
+    :return: 成功返回 True，失败返回 False
+    """
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # 1. 获取交易详情
+        cursor.execute("""
+            SELECT item_id, type, quantity 
+            FROM transactions 
+            WHERE id = ?
+        """, (tx_id,))
+        
+        tx_record = cursor.fetchone()
+        
+        if not tx_record:
+            print(f"错误：交易记录 ID {tx_id} 不存在")
+            return False
+        
+        item_id, tx_type, quantity = tx_record
+        
+        # 2. 计算需要返还的库存变化量
+        # IN 记录删除时：减少库存（因为入库被取消）
+        # OUT 记录删除时：增加库存（因为出库被取消）
+        if tx_type == 'IN':
+            stock_change = -quantity  # 减少库存
+        elif tx_type == 'OUT':
+            stock_change = quantity   # 增加库存
+        elif tx_type == 'REVERSAL':
+            # REVERSAL 记录的删除需要特殊处理
+            # 这里简单处理：按照其类型反向操作
+            # 实际上不建议删除 REVERSAL 记录
+            print(f"警告：尝试删除冲销记录 (ID: {tx_id})，建议删除原始交易记录")
+            # 暂时按照记录类型处理
+            stock_change = -quantity if tx_type == 'IN' else quantity
+        else:
+            print(f"错误：未知的交易类型 {tx_type}")
+            return False
+        
+        # 3. 检查删除后库存是否为负（仅当需要减少库存时）
+        if stock_change < 0:
+            cursor.execute("""
+                SELECT current_stock 
+                FROM inventory 
+                WHERE id = ?
+            """, (item_id,))
+            
+            current_stock_result = cursor.fetchone()
+            if not current_stock_result:
+                print(f"错误：物品 ID {item_id} 不存在")
+                return False
+                
+            current_stock = current_stock_result[0]
+            
+            # 检查删除后库存是否足够
+            if current_stock + stock_change < 0:
+                print(f"错误：删除此交易会导致库存为负 (当前: {current_stock}, 变化: {stock_change})")
+                return False
+        
+        # 4. 更新库存
+        cursor.execute("""
+            UPDATE inventory 
+            SET current_stock = current_stock + ? 
+            WHERE id = ?
+        """, (stock_change, item_id))
+        
+        # 5. 删除交易记录
+        cursor.execute("""
+            DELETE FROM transactions 
+            WHERE id = ?
+        """, (tx_id,))
+        
+        # 6. 提交事务
+        conn.commit()
+        
+        print(f"成功删除交易记录 ID {tx_id}，库存已返还 (变化: {stock_change})")
+        return True
+        
+    except sqlite3.Error as e:
+        print(f"数据库错误：删除交易失败：{e}")
+        if conn:
+            conn.rollback()
+        return False
+    except Exception as e:
+        print(f"未知错误：删除交易失败：{e}")
         if conn:
             conn.rollback()
         return False
