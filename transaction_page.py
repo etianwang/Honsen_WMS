@@ -13,11 +13,12 @@ from typing import Optional, List, Dict, Union
 
 # 导入数据库管理器和交易对话框
 import db_manager 
-from transaction_dialog import TransactionDialog 
+from transaction_dialog import TransactionDialog
+from edit_transaction_dialog import EditTransactionDialog
 
 class TransactionPage(QWidget):
     """
-    交易记录界面：展示 Transactions 表数据，并提供筛选、入库/出库、冲销和删除操作。
+    交易记录界面：展示 Transactions 表数据，并提供筛选、入库/出库、修改、冲销和删除操作。
     增加了类别、地点和项目筛选和底部统计功能，以及导出功能。
     """
     def __init__(self, db_path: str, inventory_page_ref): 
@@ -31,29 +32,33 @@ class TransactionPage(QWidget):
     def init_ui(self):
         main_layout = QVBoxLayout(self)
         
-        # --- 1. 顶部操作栏 (入库/出库/冲销/删除) ---
+        # --- 1. 顶部操作栏 (入库/出库/修改/冲销/删除) ---
         toolbar_layout = QHBoxLayout()
         
         self.in_btn = QPushButton("入库 (IN)")
         self.out_btn = QPushButton("出库 (OUT)")
+        self.edit_btn = QPushButton("修改记录")  # 新增修改按钮
         self.reverse_btn = QPushButton("冲销交易")
-        self.delete_btn = QPushButton("删除记录")  # 新增删除按钮
+        self.delete_btn = QPushButton("删除记录")
         
         self.in_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 8px;")
         self.out_btn.setStyleSheet("background-color: #f44336; color: white; font-weight: bold; padding: 8px;")
+        self.edit_btn.setStyleSheet("background-color: #2196F3; color: white; padding: 8px; font-weight: bold;")  # 蓝色按钮
         self.reverse_btn.setStyleSheet("background-color: #ff9800; color: white; padding: 8px;")
-        self.delete_btn.setStyleSheet("background-color: #9E9E9E; color: white; padding: 8px; font-weight: bold;")  # 灰色按钮
+        self.delete_btn.setStyleSheet("background-color: #9E9E9E; color: white; padding: 8px; font-weight: bold;")
         
         self.in_btn.clicked.connect(lambda: self.open_transaction_dialog('IN'))
         self.out_btn.clicked.connect(lambda: self.open_transaction_dialog('OUT'))
+        self.edit_btn.clicked.connect(self.edit_transaction_action)  # 连接修改槽函数
         self.reverse_btn.clicked.connect(self.reverse_transaction_action)
-        self.delete_btn.clicked.connect(self.delete_transaction_action)  # 连接删除槽函数
+        self.delete_btn.clicked.connect(self.delete_transaction_action)
 
         toolbar_layout.addWidget(self.in_btn)
         toolbar_layout.addWidget(self.out_btn)
+        toolbar_layout.addWidget(self.edit_btn)  # 添加修改按钮到布局
         toolbar_layout.addStretch(1)
         toolbar_layout.addWidget(self.reverse_btn)
-        toolbar_layout.addWidget(self.delete_btn)  # 添加到布局
+        toolbar_layout.addWidget(self.delete_btn)
         
         main_layout.addLayout(toolbar_layout)
         
@@ -413,6 +418,35 @@ class TransactionPage(QWidget):
                     self.inventory_page_ref.load_inventory_data()
             else:
                 QMessageBox.critical(self, "冲销失败", "冲销失败！可能是库存不足以进行反向操作。")
+
+
+    def edit_transaction_action(self):
+        """修改选中交易记录的槽函数（新增）"""
+        selected_rows = self.transaction_table.selectionModel().selectedRows()
+        if not selected_rows:
+            QMessageBox.warning(self, "警告", "请先选择要修改的交易记录。")
+            return
+            
+        row_index = selected_rows[0].row()
+        tx_id = int(self.transaction_table.item(row_index, 0).text())
+        tx_type = self.transaction_table.item(row_index, 5).text()
+        
+        # 不允许修改冲销记录
+        if tx_type == 'REVERSAL':
+            QMessageBox.warning(self, "警告", "不能修改冲销记录。如需修改，请删除此记录或修改原始交易记录。")
+            return
+        
+        # 打开修改对话框
+        dialog = EditTransactionDialog(self.db_path, tx_id, self)
+        
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            # 刷新筛选框选项
+            self._refresh_filter_dropdowns()
+            # 应用当前筛选条件刷新表格
+            self.apply_filters()
+            # 刷新库存页面
+            if self.inventory_page_ref:
+                self.inventory_page_ref.load_inventory_data()
 
 
     def delete_transaction_action(self):

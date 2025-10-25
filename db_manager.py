@@ -623,18 +623,18 @@ def reverse_transaction(db_path: str, tx_id: int) -> bool:
         
         # 2. 确定反向操作类型和数量
         if original_type == 'IN':
-            reverse_type = 'OUT'
+            reverse_type = 'REVERSAL'
             stock_change = -original_qty
             recipient_source = "冲销-IN"
         elif original_type == 'OUT':
-            reverse_type = 'IN'
+            reverse_type = 'REVERSAL'
             stock_change = original_qty
             recipient_source = "冲销-OUT"
         else: # 避免冲销冲销记录
             return False 
 
-        # 3. 检查库存 (仅限反向操作是 OUT 时)
-        if reverse_type == 'OUT':
+        # 3. 检查库存 (仅限需要减少库存时，即冲销入库记录)
+        if stock_change < 0:  # stock_change < 0 表示需要减少库存
             cursor.execute("SELECT current_stock FROM inventory WHERE id = ?", (item_id,))
             current_stock = cursor.fetchone()
             if current_stock is None or current_stock[0] < original_qty:
@@ -761,6 +761,162 @@ def delete_transaction(db_path: str, tx_id: int) -> bool:
         return False
     except Exception as e:
         print(f"未知错误：删除交易失败：{e}")
+        if conn:
+            conn.rollback()
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+def get_transaction_by_id(db_path: str, tx_id: int) -> Optional[Dict[str, Union[int, str]]]:
+    """
+    根据交易ID获取单个交易记录的详细信息
+    
+    :param db_path: 数据库路径
+    :param tx_id: 交易记录 ID
+    :return: 交易记录字典，如果不存在返回 None
+    """
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        query = """
+            SELECT 
+                t.id, t.date, t.type, t.quantity, t.recipient_source, t.project_ref, t.item_id,
+                i.name AS item_name, i.reference AS item_ref, 
+                i.location AS location,
+                i.category AS category
+            FROM transactions t
+            JOIN inventory i ON t.item_id = i.id
+            WHERE t.id = ?
+        """
+        
+        cursor.execute(query, (tx_id,))
+        row = cursor.fetchone()
+        
+        if row:
+            return dict(row)
+        return None
+        
+    except sqlite3.Error as e:
+        print(f"数据库错误：获取交易记录失败：{e}")
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def update_transaction(
+    db_path: str,
+    tx_id: int,
+    quantity: int,
+    date: str,
+    recipient_source: str,
+    project_ref: str = ""
+) -> bool:
+    """
+    更新交易记录并自动调整库存
+    
+    工作原理：
+    1. 先撤销原交易对库存的影响（反向操作）
+    2. 再应用新交易对库存的影响（正向操作）
+    
+    :param db_path: 数据库路径
+    :param tx_id: 要更新的交易记录 ID
+    :param quantity: 新的数量
+    :param date: 新的日期时间
+    :param recipient_source: 新的接收人/来源
+    :param project_ref: 新的项目参考（仅出库时使用）
+    :return: 成功返回 True，失败返回 False
+    """
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # 1. 获取原始交易详情
+        cursor.execute("""
+            SELECT item_id, type, quantity 
+            FROM transactions 
+            WHERE id = ?
+        """, (tx_id,))
+        
+        tx_record = cursor.fetchone()
+        
+        if not tx_record:
+            print(f"错误：交易记录 ID {tx_id} 不存在")
+            return False
+        
+        item_id, tx_type, original_quantity = tx_record
+        
+        # 2. 计算库存变化量
+        # 步骤A: 先撤销原交易的影响
+        if tx_type == 'IN':
+            undo_change = -original_quantity  # 撤销入库：减少库存
+        else:  # OUT
+            undo_change = original_quantity   # 撤销出库：增加库存
+        
+        # 步骤B: 再应用新交易的影响
+        if tx_type == 'IN':
+            apply_change = quantity  # 应用新入库：增加库存
+        else:  # OUT
+            apply_change = -quantity  # 应用新出库：减少库存
+        
+        # 总变化量 = 撤销 + 应用
+        total_stock_change = undo_change + apply_change
+        
+        # 3. 检查修改后库存是否足够（仅当总变化量为负时）
+        if total_stock_change < 0:
+            cursor.execute("""
+                SELECT current_stock 
+                FROM inventory 
+                WHERE id = ?
+            """, (item_id,))
+            
+            current_stock_result = cursor.fetchone()
+            if not current_stock_result:
+                print(f"错误：物品 ID {item_id} 不存在")
+                return False
+                
+            current_stock = current_stock_result[0]
+            
+            # 检查修改后库存是否足够
+            if current_stock + total_stock_change < 0:
+                print(f"错误：修改此交易会导致库存不足 (当前: {current_stock}, 需要变化: {total_stock_change})")
+                return False
+        
+        # 4. 更新库存
+        cursor.execute("""
+            UPDATE inventory 
+            SET current_stock = current_stock + ? 
+            WHERE id = ?
+        """, (total_stock_change, item_id))
+        
+        # 5. 更新交易记录
+        cursor.execute("""
+            UPDATE transactions 
+            SET quantity = ?, 
+                date = ?, 
+                recipient_source = ?, 
+                project_ref = ?
+            WHERE id = ?
+        """, (quantity, date, recipient_source, project_ref, tx_id))
+        
+        # 6. 提交事务
+        conn.commit()
+        
+        print(f"成功更新交易记录 ID {tx_id}，库存变化: {total_stock_change}")
+        return True
+        
+    except sqlite3.Error as e:
+        print(f"数据库错误：更新交易失败：{e}")
+        if conn:
+            conn.rollback()
+        return False
+    except Exception as e:
+        print(f"未知错误：更新交易失败：{e}")
         if conn:
             conn.rollback()
         return False
