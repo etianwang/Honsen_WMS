@@ -3,7 +3,8 @@ import sys
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
     QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit,
-    QMessageBox, QApplication, QLabel, QDialog, QFileDialog 
+    QMessageBox, QApplication, QLabel, QDialog, QFileDialog,
+    QComboBox
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
@@ -19,10 +20,12 @@ class InventoryPage(QWidget):
     库存管理界面：展示和操作 Inventory 表数据。
     实现：根据库存状态（缺货/预警）设置行背景色。
     新增：支持多选和批量编辑功能，以及刷新按钮。
+    扩展：增加类别、专业、储存位置筛选功能。
     """
     def __init__(self, db_path: str):
         super().__init__()
         self.db_path = db_path
+        self.all_data = []  # 存储所有数据用于筛选
         self.init_ui()
         self.load_inventory_data()
 
@@ -37,6 +40,30 @@ class InventoryPage(QWidget):
         self.search_input.setPlaceholderText("输入物品名称或型号进行搜索...")
         self.search_input.textChanged.connect(self.filter_data)
         toolbar_layout.addWidget(self.search_input)
+        
+        # 类别筛选
+        toolbar_layout.addWidget(QLabel("类别:"))
+        self.category_filter_combo = QComboBox()
+        self.category_filter_combo.setFixedWidth(120)
+        self.category_filter_combo.addItem("ALL")
+        self.category_filter_combo.currentTextChanged.connect(self.filter_data)
+        toolbar_layout.addWidget(self.category_filter_combo)
+        
+        # 专业筛选
+        toolbar_layout.addWidget(QLabel("专业:"))
+        self.domain_filter_combo = QComboBox()
+        self.domain_filter_combo.setFixedWidth(120)
+        self.domain_filter_combo.addItem("ALL")
+        self.domain_filter_combo.currentTextChanged.connect(self.filter_data)
+        toolbar_layout.addWidget(self.domain_filter_combo)
+        
+        # 储存位置筛选
+        toolbar_layout.addWidget(QLabel("储存位置:"))
+        self.location_filter_combo = QComboBox()
+        self.location_filter_combo.setFixedWidth(120)
+        self.location_filter_combo.addItem("ALL")
+        self.location_filter_combo.currentTextChanged.connect(self.filter_data)
+        toolbar_layout.addWidget(self.location_filter_combo)
         
         # 刷新按钮
         self.refresh_btn = QPushButton("🔄 刷新")
@@ -78,9 +105,9 @@ class InventoryPage(QWidget):
         self.inventory_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.inventory_table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
 
-        # 定义表头
+        # 定义表头（新增 domain 列）
         self.headers = [
-            "ID", "名称 (Name)", "物品型号 (Ref)", "材料类别","单位 (Unit)", 
+            "ID", "名称 (Name)", "物品型号 (Ref)", "材料类别", "专业类别", "单位 (Unit)", 
             "当前库存", "最小库存", "储存位置", "库存状态"
         ]
         self.inventory_table.setColumnCount(len(self.headers))
@@ -105,6 +132,83 @@ class InventoryPage(QWidget):
         """从数据库加载数据并填充表格"""
         data = db_manager.get_all_inventory(self.db_path)
         
+        # 保存所有数据用于筛选
+        self.all_data = data
+        
+        # 刷新筛选下拉框选项
+        self._refresh_filter_dropdowns()
+        
+        # 填充表格
+        self._populate_table(data)
+        
+        # 应用当前筛选
+        self.filter_data()
+
+
+    def _refresh_filter_dropdowns(self):
+        """刷新筛选下拉框的选项"""
+        if not self.all_data:
+            return
+        
+        # 保存当前选择
+        current_category = self.category_filter_combo.currentText()
+        current_domain = self.domain_filter_combo.currentText()
+        current_location = self.location_filter_combo.currentText()
+        
+        # 提取所有唯一的类别
+        categories = set()
+        for item in self.all_data:
+            category = item.get('category', '').strip()
+            if category:
+                categories.add(category)
+        
+        # 提取所有唯一的专业
+        domains = set()
+        for item in self.all_data:
+            domain = item.get('domain', '').strip()
+            if domain:
+                domains.add(domain)
+        
+        # 提取所有唯一的储存位置
+        locations = set()
+        for item in self.all_data:
+            location = item.get('location', '').strip()
+            if location:
+                locations.add(location)
+        
+        # 更新类别下拉框
+        self.category_filter_combo.blockSignals(True)
+        self.category_filter_combo.clear()
+        self.category_filter_combo.addItem("ALL")
+        self.category_filter_combo.addItems(sorted(list(categories)))
+        cat_index = self.category_filter_combo.findText(current_category)
+        if cat_index >= 0:
+            self.category_filter_combo.setCurrentIndex(cat_index)
+        self.category_filter_combo.blockSignals(False)
+        
+        # 更新专业下拉框
+        self.domain_filter_combo.blockSignals(True)
+        self.domain_filter_combo.clear()
+        self.domain_filter_combo.addItem("ALL")
+        self.domain_filter_combo.addItems(sorted(list(domains)))
+        dom_index = self.domain_filter_combo.findText(current_domain)
+        if dom_index >= 0:
+            self.domain_filter_combo.setCurrentIndex(dom_index)
+        self.domain_filter_combo.blockSignals(False)
+        
+        # 更新储存位置下拉框
+        self.location_filter_combo.blockSignals(True)
+        self.location_filter_combo.clear()
+        self.location_filter_combo.addItem("ALL")
+        self.location_filter_combo.addItems(sorted(list(locations)))
+        loc_index = self.location_filter_combo.findText(current_location)
+        if loc_index >= 0:
+            self.location_filter_combo.setCurrentIndex(loc_index)
+        self.location_filter_combo.blockSignals(False)
+
+
+    def _populate_table(self, data):
+        """填充表格数据"""
         self.inventory_table.setRowCount(len(data))
         
         # 定义颜色常量
@@ -127,16 +231,17 @@ class InventoryPage(QWidget):
                 status_text = "预警"
                 color = warning_color
             
-            # 填充表格行
+            # 填充表格行（新增 domain 列）
             self.inventory_table.setItem(row_index, 0, QTableWidgetItem(str(item['id'])))
             self.inventory_table.setItem(row_index, 1, QTableWidgetItem(item['name']))
             self.inventory_table.setItem(row_index, 2, QTableWidgetItem(item['reference']))
             self.inventory_table.setItem(row_index, 3, QTableWidgetItem(item.get('category', '其他')))
-            self.inventory_table.setItem(row_index, 4, QTableWidgetItem(item['unit']))
-            self.inventory_table.setItem(row_index, 5, QTableWidgetItem(str(current)))
-            self.inventory_table.setItem(row_index, 6, QTableWidgetItem(str(minimum)))
-            self.inventory_table.setItem(row_index, 7, QTableWidgetItem(item['location']))
-            self.inventory_table.setItem(row_index, 8, QTableWidgetItem(status_text))
+            self.inventory_table.setItem(row_index, 4, QTableWidgetItem(item.get('domain', '其他')))  # 新增
+            self.inventory_table.setItem(row_index, 5, QTableWidgetItem(item['unit']))
+            self.inventory_table.setItem(row_index, 6, QTableWidgetItem(str(current)))
+            self.inventory_table.setItem(row_index, 7, QTableWidgetItem(str(minimum)))
+            self.inventory_table.setItem(row_index, 8, QTableWidgetItem(item['location']))
+            self.inventory_table.setItem(row_index, 9, QTableWidgetItem(status_text))
             
             # 应用行颜色
             for col in range(self.inventory_table.columnCount()):
@@ -150,17 +255,7 @@ class InventoryPage(QWidget):
 
     def refresh_data(self):
         """刷新按钮的处理函数：重新从数据库加载数据"""
-        # 保存当前搜索内容
-        current_search = self.search_input.text()
-        
-        # 重新加载数据
         self.load_inventory_data()
-        
-        # 恢复搜索过滤
-        if current_search:
-            self.filter_data()
-        
-        # 可选：显示提示信息
         self.status_label.setText(f"数据已刷新 | 总计 {self.inventory_table.rowCount()} 条记录。")
 
 
@@ -176,22 +271,56 @@ class InventoryPage(QWidget):
 
 
     def filter_data(self):
-        """根据搜索框内容过滤表格行"""
+        """根据搜索框和筛选下拉框内容过滤表格行"""
         search_text = self.search_input.text().lower().strip()
+        category_filter = self.category_filter_combo.currentText()
+        domain_filter = self.domain_filter_combo.currentText()
+        location_filter = self.location_filter_combo.currentText()
+        
+        visible_count = 0
         
         for i in range(self.inventory_table.rowCount()):
             name_item = self.inventory_table.item(i, 1)
             ref_item = self.inventory_table.item(i, 2)
+            category_item = self.inventory_table.item(i, 3)
+            domain_item = self.inventory_table.item(i, 4)
+            location_item = self.inventory_table.item(i, 8)
             
-            hide = True
-            if not search_text:
-                hide = False 
-            elif name_item and search_text in name_item.text().lower():
-                hide = False
-            elif ref_item and search_text in ref_item.text().lower():
-                hide = False
-
+            hide = False
+            
+            # 搜索框筛选
+            if search_text:
+                name_match = name_item and search_text in name_item.text().lower()
+                ref_match = ref_item and search_text in ref_item.text().lower()
+                if not (name_match or ref_match):
+                    hide = True
+            
+            # 类别筛选
+            if not hide and category_filter != "ALL":
+                if not category_item or category_item.text() != category_filter:
+                    hide = True
+            
+            # 专业筛选
+            if not hide and domain_filter != "ALL":
+                if not domain_item or domain_item.text() != domain_filter:
+                    hide = True
+            
+            # 储存位置筛选
+            if not hide and location_filter != "ALL":
+                if not location_item or location_item.text() != location_filter:
+                    hide = True
+            
             self.inventory_table.setRowHidden(i, hide)
+            
+            if not hide:
+                visible_count += 1
+        
+        # 更新状态栏显示筛选结果
+        total_count = self.inventory_table.rowCount()
+        if visible_count < total_count:
+            self.status_label.setText(f"筛选结果：显示 {visible_count} / {total_count} 条记录。")
+        else:
+            self.status_label.setText(f"总计 {total_count} 条记录。")
             
         
     def add_item_dialog(self):
@@ -209,7 +338,6 @@ class InventoryPage(QWidget):
             QMessageBox.warning(self, "警告", "请先选择要编辑的物品行。")
             return
         
-        # 如果选中了多个，提示使用批量编辑
         if len(selected_rows) > 1:
             reply = QMessageBox.question(
                 self,
@@ -225,16 +353,17 @@ class InventoryPage(QWidget):
             
         row_index = selected_rows[0].row()
         
-        # 提取选中行的数据
+        # 提取选中行的数据（新增 domain 字段）
         item_data = {
             'id': int(self.inventory_table.item(row_index, 0).text()),
             'name': self.inventory_table.item(row_index, 1).text(),
             'reference': self.inventory_table.item(row_index, 2).text(),
             'category': self.inventory_table.item(row_index, 3).text(),
-            'unit': self.inventory_table.item(row_index, 4).text(),
-            'current_stock': int(self.inventory_table.item(row_index, 5).text()),
-            'min_stock': int(self.inventory_table.item(row_index, 6).text()),
-            'location': self.inventory_table.item(row_index, 7).text()
+            'domain': self.inventory_table.item(row_index, 4).text(),  # 新增
+            'unit': self.inventory_table.item(row_index, 5).text(),
+            'current_stock': int(self.inventory_table.item(row_index, 6).text()),
+            'min_stock': int(self.inventory_table.item(row_index, 7).text()),
+            'location': self.inventory_table.item(row_index, 8).text()
         }
         
         # 弹出编辑对话框
@@ -252,12 +381,14 @@ class InventoryPage(QWidget):
             return
         
         if len(selected_rows) == 1:
-            reply = QMessageBox.question(self, "单选提示", "您只选中了一个物品。是否使用普通编辑功能？", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.Yes)
+            reply = QMessageBox.question(self, "单选提示", "您只选中了一个物品。是否使用普通编辑功能？", 
+                                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, 
+                                        QMessageBox.StandardButton.Yes)
             if reply == QMessageBox.StandardButton.Yes:
                 self.edit_item_dialog()
             return
         
-        # 收集选中物品的完整信息
+        # 收集选中物品的完整信息（新增 domain 字段）
         selected_items = []
         for row_model_index in selected_rows:
             row = row_model_index.row()
@@ -266,10 +397,11 @@ class InventoryPage(QWidget):
                 'name': self.inventory_table.item(row, 1).text(),
                 'reference': self.inventory_table.item(row, 2).text(),
                 'category': self.inventory_table.item(row, 3).text(),
-                'unit': self.inventory_table.item(row, 4).text(),
-                'current_stock': int(self.inventory_table.item(row, 5).text()),
-                'min_stock': int(self.inventory_table.item(row, 6).text()),
-                'location': self.inventory_table.item(row, 7).text()
+                'domain': self.inventory_table.item(row, 4).text(),  # 新增
+                'unit': self.inventory_table.item(row, 5).text(),
+                'current_stock': int(self.inventory_table.item(row, 6).text()),
+                'min_stock': int(self.inventory_table.item(row, 7).text()),
+                'location': self.inventory_table.item(row, 8).text()
             }
             selected_items.append(item_data)
         

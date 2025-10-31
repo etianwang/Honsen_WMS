@@ -19,7 +19,7 @@ from edit_transaction_dialog import EditTransactionDialog
 class TransactionPage(QWidget):
     """
     交易记录界面：展示 Transactions 表数据，并提供筛选、入库/出库、修改、冲销和删除操作。
-    增加了类别、地点和项目筛选和底部统计功能，以及导出功能。
+    增加了类别、地点、项目和专业筛选和底部统计功能，以及导出功能。
     """
     def __init__(self, db_path: str, inventory_page_ref): 
         super().__init__()
@@ -84,49 +84,58 @@ class TransactionPage(QWidget):
         
         filter_container.addLayout(filter_row1)
 
-        # --- 筛选行 2: 类别、地点、项目、类型、搜索 & 按钮 ---
+        # --- 筛选行 2: 类别、专业、地点、项目、类型、搜索 & 按钮 ---
         filter_row2 = QHBoxLayout()
 
         # A. 类别筛选
         filter_row2.addWidget(QLabel("类别:"))
         self.category_filter_combo = QComboBox()
+        self.category_filter_combo.setFixedWidth(120)  # 设置固定宽度为 120 像素 (您可以根据需要调整此值)
         category_options = ["ALL"] + db_manager.get_config_options(self.db_path, 'CATEGORY')
         self.category_filter_combo.addItems(category_options)
         filter_row2.addWidget(self.category_filter_combo)
 
-        # B. 地点筛选
+        # B. 专业筛选（新增）
+        filter_row2.addWidget(QLabel("专业:"))
+        self.domain_filter_combo = QComboBox()
+        domain_options = ["ALL"] + db_manager.get_config_options(self.db_path, 'DOMAIN')
+        self.domain_filter_combo.addItems(domain_options)
+        filter_row2.addWidget(self.domain_filter_combo)
+
+        # C. 地点筛选
         filter_row2.addWidget(QLabel("地点:"))
         self.location_filter_combo = QComboBox()
         location_options = ["ALL"] + db_manager.get_config_options(self.db_path, 'LOCATION')
         self.location_filter_combo.addItems(location_options)
         filter_row2.addWidget(self.location_filter_combo)
 
-        # C. 项目筛选
+        # D. 项目筛选
         filter_row2.addWidget(QLabel("项目:"))
         self.project_filter_combo = QComboBox()
         project_options = ["ALL"] + db_manager.get_config_options(self.db_path, 'PROJECT')
         self.project_filter_combo.addItems(project_options)
         filter_row2.addWidget(self.project_filter_combo)
 
-        # D. 类型筛选
+        # E. 类型筛选
         filter_row2.addWidget(QLabel("类型:"))
         self.type_combo = QComboBox()
-        self.type_combo.addItems(["ALL", "IN", "OUT", "REVERSAL"])
+        # 修改 1: 筛选选项更新为新的冲销类型通配符
+        self.type_combo.addItems(["ALL", "IN", "OUT", "REVERSAL-*"]) 
         filter_row2.addWidget(self.type_combo)
 
-        # E. 物品搜索
+        # F. 物品搜索
         filter_row2.addWidget(QLabel("物品搜索:"))
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("物品名称或型号")
         filter_row2.addWidget(self.search_input)
         
-        # F. 筛选/刷新按钮
+        # G. 筛选/刷新按钮
         self.filter_btn = QPushButton("筛选/刷新")
         self.filter_btn.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold; padding: 8px;")
-        self.filter_btn.clicked.connect(self.apply_filters)
+        self.filter_btn.clicked.connect(self.refresh_and_apply_filters)
         filter_row2.addWidget(self.filter_btn)
 
-        # G. 导出筛选结果按钮 
+        # H. 导出筛选结果按钮 
         self.export_btn = QPushButton("导出筛选结果 (CSV)")
         self.export_btn.setStyleSheet("background-color: #00BCD4; color: white; font-weight: bold; padding: 8px;")
         self.export_btn.clicked.connect(self.export_filtered_transactions_action)
@@ -142,20 +151,24 @@ class TransactionPage(QWidget):
         self.transaction_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.transaction_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection) 
 
-        # 定义表头
+        # 定义新的表头顺序：数量 (7) 移到 物品型号/规格 (3) 后面，作为第 4 列
+        # 新顺序: ID(0), 日期/时间(1), 物品名称(2), 物品型号/规格(3), 物品数量(4), 储存位置(5), 专业(6), 物品类型(7), 接收人/来源(8), 出库项目(9)
         self.headers = [
-            "ID", "日期/时间", "      物品名称      ", "物品型号/规格", 
-            "储存位置/项目仓库", "物品类型", "物品数量", "接收人/来源", "出库项目"
+            "ID", "日期/时间", "      物品名称     ", "物品型号/规格", 
+            "物品数量",  # <--- 移动到这里
+            "储存位置", "专业", "物品类型", "接收人/来源", "出库项目"
         ]
         self.transaction_table.setColumnCount(len(self.headers))
         self.transaction_table.setHorizontalHeaderLabels(self.headers)
         
         # 调整列宽
         self.transaction_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        self.transaction_table.horizontalHeader().resizeSection(1, 160)
-        self.transaction_table.horizontalHeader().resizeSection(2, 300)
-        self.transaction_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self.transaction_table.horizontalHeader().resizeSection(4, 120) 
+        self.transaction_table.horizontalHeader().resizeSection(1, 160) # 日期
+        self.transaction_table.horizontalHeader().resizeSection(2, 300) # 名称
+        self.transaction_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch) # 型号/规格
+        self.transaction_table.horizontalHeader().resizeSection(4, 80) # 数量 (新位置)
+        self.transaction_table.horizontalHeader().resizeSection(5, 120) # 储存位置 (新位置)
+        # 其余列使用 ResizeToContents 或默认
         
         main_layout.addWidget(self.transaction_table)
         
@@ -179,32 +192,44 @@ class TransactionPage(QWidget):
         end_date = self.end_date_edit.date().toString('yyyy-MM-dd')
         
         category = self.category_filter_combo.currentText()
+        domain = self.domain_filter_combo.currentText()  # 新增专业筛选
         location = self.location_filter_combo.currentText()
         project = self.project_filter_combo.currentText()
-        tx_type = self.type_combo.currentText()
+        tx_type_filter = self.type_combo.currentText() # 修改变量名以避免与函数参数冲突
         item_search = self.search_input.text().strip()
         
         # 转换 'ALL' 和空字符串/None 为 None
         category = category if category and category != 'ALL' else None
+        domain = domain if domain and domain != 'ALL' else None  # 新增
         location = location if location and location != 'ALL' else None
         project = project if project and project != 'ALL' else None
-        tx_type = tx_type if tx_type and tx_type != 'ALL' else None
         item_search = item_search if item_search else None
+        
+        # 修改 2: 调整 tx_type_filter 的处理逻辑
+        if tx_type_filter == 'ALL':
+            tx_type = None
+        elif tx_type_filter == 'REVERSAL-*':
+            # 传递特殊标志，让 db_manager 筛选所有冲销记录
+            tx_type = 'REVERSAL-' 
+        else:
+            tx_type = tx_type_filter
         
         self._load_data_with_filters(
             start_date=start_date,
             end_date=end_date,
-            tx_type=tx_type,
+            tx_type=tx_type, # 传递处理后的 tx_type
             item_search=item_search,
-            category=category, 
+            category=category,
+            domain=domain,  # 新增专业参数
             location=location, 
-            project=project 	
+            project=project    
         )
     
     def _refresh_filter_dropdowns(self):
         """刷新筛选下拉框的选项（从实际库存数据中提取）"""
         # 保存当前选择
         current_category = self.category_filter_combo.currentText()
+        current_domain = self.domain_filter_combo.currentText()  # 新增
         current_location = self.location_filter_combo.currentText()
         current_project = self.project_filter_combo.currentText()
         
@@ -221,6 +246,14 @@ class TransactionPage(QWidget):
                 if category:
                     categories.add(category)
             category_options = ["ALL"] + sorted(list(categories))
+            
+            # ⭐ 从库存中提取所有唯一的专业（新增）
+            domains = set()
+            for item in all_inventory:
+                domain = item.get('domain', '').strip()
+                if domain:
+                    domains.add(domain)
+            domain_options = ["ALL"] + sorted(list(domains))
             
             # ⭐ 从库存中提取所有唯一的地点
             locations = set()
@@ -247,12 +280,17 @@ class TransactionPage(QWidget):
             print(f"刷新筛选选项时出错: {e}")
             # 出错时使用默认值
             category_options = ["ALL"]
+            domain_options = ["ALL"]  # 新增
             location_options = ["ALL"]
             project_options = ["ALL"]
         
         # 更新类别下拉框
         self.category_filter_combo.clear()
         self.category_filter_combo.addItems(category_options)
+        
+        # 更新专业下拉框（新增）
+        self.domain_filter_combo.clear()
+        self.domain_filter_combo.addItems(domain_options)
         
         # 更新地点下拉框
         self.location_filter_combo.clear()
@@ -266,6 +304,11 @@ class TransactionPage(QWidget):
         cat_index = self.category_filter_combo.findText(current_category)
         if cat_index >= 0:
             self.category_filter_combo.setCurrentIndex(cat_index)
+        
+        # 恢复专业选择（新增）
+        dom_index = self.domain_filter_combo.findText(current_domain)
+        if dom_index >= 0:
+            self.domain_filter_combo.setCurrentIndex(dom_index)
         
         loc_index = self.location_filter_combo.findText(current_location)
         if loc_index >= 0:
@@ -284,10 +327,10 @@ class TransactionPage(QWidget):
 
     def _load_data_with_filters(self, start_date: Optional[str] = None, end_date: Optional[str] = None, 
                                  tx_type: Optional[str] = None, item_search: Optional[str] = None,
-                                 category: Optional[str] = None, location: Optional[str] = None,
-                                 project: Optional[str] = None): 
+                                 category: Optional[str] = None, domain: Optional[str] = None,
+                                 location: Optional[str] = None, project: Optional[str] = None): 
         """
-        根据筛选参数从数据库加载数据并填充表格
+        根据筛选参数从数据库加载数据并填充表格（新增domain参数）
         """
         
         data = db_manager.get_transactions_history(
@@ -296,9 +339,10 @@ class TransactionPage(QWidget):
             end_date=end_date, 
             tx_type=tx_type, 
             item_search=item_search,
-            category=category, 
+            category=category,
+            domain=domain,  # 新增专业参数
             location=location, 
-            project=project 	
+            project=project    
         )
         
         # 关键步骤：存储当前筛选结果供导出使用
@@ -310,57 +354,75 @@ class TransactionPage(QWidget):
         total_out_qty = 0
         unique_locations = set()
         unique_projects = set()
+        unique_domains = set()  # 新增：统计专业
         
         for tx in data:
             quantity = tx['quantity']
             tx_type_upper = tx['type'].upper()
             
-            if tx_type_upper == 'IN':
+            # 冲销记录对 IN/OUT 总计的计算
+            if tx_type_upper == 'IN' or tx_type_upper == 'REVERSAL-OUT': 
                 total_in_qty += quantity
-            elif tx_type_upper == 'OUT':
+            elif tx_type_upper == 'OUT' or tx_type_upper == 'REVERSAL-IN': 
                 total_out_qty += quantity
                 
             if tx.get('location'):
                 unique_locations.add(tx['location'])
                 
+            # 新增：统计专业
+            if tx.get('domain'):
+                unique_domains.add(tx['domain'])
+                
             project_ref = tx.get('project_ref')
             if project_ref and project_ref.strip() and not project_ref.startswith("Reversed TX:"):
                 unique_projects.add(project_ref)
 
-        # 格式化状态栏信息
+        # 格式化状态栏信息（新增专业统计）
         stats_msg = (
             f"筛选结果: **共 {total_transactions} 条记录**。"
             f" 入库总数量: {total_in_qty}，出库总数量: {total_out_qty}。"
-            f" 涉及 **{len(unique_locations)} 个地点**，用于 **{len(unique_projects)} 个项目**。"
+            f" 涉及 **{len(unique_domains)} 个专业**，**{len(unique_locations)} 个地点**，用于 **{len(unique_projects)} 个项目**。"
         )
         # ----------------------
 
         self.transaction_table.setRowCount(len(data))
         
+        # 定义颜色常量
+        COLOR_IN = QColor(230, 255, 230)      # 浅绿色 (原色)
+        COLOR_OUT = QColor(255, 230, 230)     # 浅红色 (原色)
+        # 修改 3: 浅黄色作为冲销色
+        COLOR_REVERSAL = QColor(255, 255, 204) # 浅黄色 
+        
         for row_index, tx in enumerate(data):
             
             tx_type_upper = tx['type'].upper()
             is_out = tx_type_upper == 'OUT'
-            is_reversal = tx_type_upper == 'REVERSAL'
+            # 修改 3: 检查是否是任何冲销类型
+            is_reversal = tx_type_upper.startswith('REVERSAL')
             
-            # 填充表格行
+            # 填充表格行（新列顺序：数量(4) 移到 型号(3) 后面）
+            # 新顺序: ID(0), 日期/时间(1), 物品名称(2), 物品型号/规格(3), 物品数量(4), 储存位置(5), 专业(6), 物品类型(7), 接收人/来源(8), 出库项目(9)
+            # 原始数据键索引: 'id', 'date', 'item_name', 'item_ref', 'location', 'domain', 'type', 'quantity', 'recipient_source', 'project_ref'
             self.transaction_table.setItem(row_index, 0, QTableWidgetItem(str(tx['id'])))
             self.transaction_table.setItem(row_index, 1, QTableWidgetItem(tx['date']))
             self.transaction_table.setItem(row_index, 2, QTableWidgetItem(tx['item_name']))
             self.transaction_table.setItem(row_index, 3, QTableWidgetItem(tx['item_ref']))
-            self.transaction_table.setItem(row_index, 4, QTableWidgetItem(tx['location']))
-            self.transaction_table.setItem(row_index, 5, QTableWidgetItem(tx['type']))
-            self.transaction_table.setItem(row_index, 6, QTableWidgetItem(str(tx['quantity'])))
-            self.transaction_table.setItem(row_index, 7, QTableWidgetItem(tx['recipient_source']))
-            self.transaction_table.setItem(row_index, 8, QTableWidgetItem(tx['project_ref']))
+            
+            self.transaction_table.setItem(row_index, 4, QTableWidgetItem(str(tx['quantity']))) # <--- 数量移到第 4 列
+            
+            self.transaction_table.setItem(row_index, 5, QTableWidgetItem(tx['location'])) # <--- 储存位置移到第 5 列
+            self.transaction_table.setItem(row_index, 6, QTableWidgetItem(tx.get('domain', '')))  # <--- 专业移到第 6 列
+            self.transaction_table.setItem(row_index, 7, QTableWidgetItem(tx['type'])) # <--- 类型移到第 7 列
+            self.transaction_table.setItem(row_index, 8, QTableWidgetItem(tx['recipient_source'])) # <--- 接收人/来源移到第 8 列
+            self.transaction_table.setItem(row_index, 9, QTableWidgetItem(tx['project_ref'])) # <--- 项目移到第 9 列
             
             # 设置行颜色
-            if is_out:
-                color = QColor(255, 230, 230) 
-            elif is_reversal:
-                color = QColor(255, 240, 210) 
+            if is_reversal:
+                color = COLOR_REVERSAL # 冲销记录：浅黄色
+            elif is_out:
+                color = COLOR_OUT      # 出库记录：浅红色
             else:
-                color = QColor(230, 255, 230) 
+                color = COLOR_IN       # 入库记录：浅绿色 (IN 或 REVERSAL-OUT)
 
             for col in range(self.transaction_table.columnCount()):
                 self.transaction_table.item(row_index, col).setBackground(color)
@@ -397,11 +459,13 @@ class TransactionPage(QWidget):
             
         row_index = selected_rows[0].row()
         tx_id = int(self.transaction_table.item(row_index, 0).text())
-        tx_type = self.transaction_table.item(row_index, 5).text() 
+        # 更新列索引：类型(type) 变为 7
+        tx_type = self.transaction_table.item(row_index, 7).text() 
         
-        if tx_type == 'REVERSAL':
-              QMessageBox.warning(self, "警告", "不能冲销已冲销的交易记录。")
-              return
+        # 修改 4: 检查是否是任何冲销类型
+        if tx_type.startswith('REVERSAL'):
+            QMessageBox.warning(self, "警告", "不能冲销已冲销的交易记录。")
+            return
 
         reply = QMessageBox.question(self, 
             "确认冲销", 
@@ -429,10 +493,11 @@ class TransactionPage(QWidget):
             
         row_index = selected_rows[0].row()
         tx_id = int(self.transaction_table.item(row_index, 0).text())
-        tx_type = self.transaction_table.item(row_index, 5).text()
+        # 更新列索引：类型(type) 变为 7
+        tx_type = self.transaction_table.item(row_index, 7).text() 
         
-        # 不允许修改冲销记录
-        if tx_type == 'REVERSAL':
+        # 修改 5: 检查是否是任何冲销类型
+        if tx_type.startswith('REVERSAL'):
             QMessageBox.warning(self, "警告", "不能修改冲销记录。如需修改，请删除此记录或修改原始交易记录。")
             return
         
@@ -458,17 +523,20 @@ class TransactionPage(QWidget):
             
         row_index = selected_rows[0].row()
         tx_id = int(self.transaction_table.item(row_index, 0).text())
-        tx_type = self.transaction_table.item(row_index, 5).text()
+        # 更新列索引：类型(type) 变为 7
+        tx_type = self.transaction_table.item(row_index, 7).text() 
         tx_date = self.transaction_table.item(row_index, 1).text()
         item_name = self.transaction_table.item(row_index, 2).text()
-        quantity = self.transaction_table.item(row_index, 6).text()
+        # 更新列索引：数量(quantity) 变为 4
+        quantity = self.transaction_table.item(row_index, 4).text() 
         
         # 构建详细的确认信息
         if tx_type == 'IN':
             effect_msg = f"删除此入库记录将从库存中扣除 {quantity} 单位。"
         elif tx_type == 'OUT':
             effect_msg = f"删除此出库记录将向库存中返还 {quantity} 单位。"
-        elif tx_type == 'REVERSAL':
+        # 修改 6: 检查是否是任何冲销类型
+        elif tx_type.startswith('REVERSAL'):
             effect_msg = "不建议删除冲销记录。建议删除原始交易记录。"
         else:
             effect_msg = ""
@@ -490,13 +558,13 @@ class TransactionPage(QWidget):
         
         if reply == QMessageBox.StandardButton.Yes:
             if db_manager.delete_transaction(self.db_path, tx_id):
-                QMessageBox.information(self, "删除成功", "交易记录已删除，库存已返还。")
+                QMessageBox.information(self, "删除成功", "交易记录已删除，库存已更新。")
                 self._refresh_filter_dropdowns()
                 self.apply_filters()
                 if self.inventory_page_ref:
                     self.inventory_page_ref.load_inventory_data()
             else:
-                QMessageBox.critical(self, "删除失败", "删除失败！可能是库存不足以返还，或数据库发生错误。")
+                QMessageBox.critical(self, "删除失败", "删除失败！可能是数据库发生错误，或逻辑限制。")
 
 
     # ----------------------------------------
@@ -521,19 +589,23 @@ class TransactionPage(QWidget):
             return
         
         # 定义 CSV 头部和对应的字典键
+        # 保持导出顺序与表格顺序一致
         csv_headers = [
-            "日期/时间", "物品名称", "物品型号", 
-            "储存位置", "类型", "数量", "接收人/来源", "项目"
+            "日期/时间", "物品名称", "物品型号", "数量", 
+            "储存位置", "专业", "类型", "接收人/来源", "项目"
         ]
         data_keys = [
-            'date', 'item_name', 'item_ref', 
-            'location', 'type', 'quantity', 'recipient_source', 'project_ref'
+            'date', 'item_name', 'item_ref', 'quantity', 
+            'location', 'domain', 'type', 'recipient_source', 'project_ref'
         ]
         
         # 写入文件
         try:
+            # 保持格式不变，方便拷贝到Excel
             with open(filepath, 'w', encoding='utf-8', newline='') as csvfile:
-                writer = csv.writer(csvfile)
+                # 在您的运行环境中，如果需要严格的法国 Excel 兼容性，可能需要使用分号作为分隔符
+                # 但标准 CSV 默认使用逗号，这里保持标准 CSV 格式
+                writer = csv.writer(csvfile) 
                 writer.writerow(csv_headers)
                 
                 for tx in self.current_data:
@@ -549,4 +621,6 @@ class TransactionPage(QWidget):
 # --- 测试代码 ---
 if __name__ == '__main__':
     app = QApplication(sys.argv)
+    # 此处省略了实际的 db_manager 数据库初始化和 TransactionPage 实例化，
+    # 因为完整的运行需要其他依赖文件。
     sys.exit(0)

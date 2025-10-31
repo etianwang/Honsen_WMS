@@ -84,15 +84,15 @@ def import_from_csv(filepath: str) -> List[Dict[str, Union[str, int]]]:
     从 CSV 文件导入库存数据，返回一个字典列表。
     
     支持的字段:
-    - 必需: name, reference, unit, min_stock, location
+    - 必需: name, reference, unit, min_stock, location, domain (新增)
     - 可选: category, current_stock
     
     :param filepath: 源 CSV 文件路径。
     :return: 包含导入数据的字典列表。空列表表示导入失败或无有效数据。
     """
     items = []
-    # 必需字段列表（与 db_manager.py 中的 batch_import_inventory 对应）
-    required_headers = ['name', 'reference', 'unit', 'min_stock', 'location']
+    # 必需字段列表（已加入 'domain'）
+    required_headers = ['name', 'reference', 'unit', 'min_stock', 'location', 'domain']
     
     filepath = Path(filepath)
     
@@ -151,22 +151,31 @@ def import_from_csv(filepath: str) -> List[Dict[str, Union[str, int]]]:
                     if not category:
                         category = '其他'
                     
-                    # 验证必需字段不为空
+                    # 验证必需字段不为空 (新增 domain)
                     name = row['name'].strip()
                     reference = row['reference'].strip()
                     unit = row['unit'].strip()
                     location = row['location'].strip()
+                    domain = row['domain'].strip() # 获取 domain
                     
-                    if not all([name, reference, unit, location]):
-                        logger.warning(f"第 {row_num} 行: 必需字段不能为空，已跳过")
+                    if not all([name, reference, unit, location, domain]): # 检查 domain
+                        missing_fields = []
+                        if not name: missing_fields.append('name')
+                        if not reference: missing_fields.append('reference')
+                        if not unit: missing_fields.append('unit')
+                        if not location: missing_fields.append('location')
+                        if not domain: missing_fields.append('domain') # 检查 domain
+                        
+                        logger.warning(f"第 {row_num} 行: 必需字段 {', '.join(missing_fields)} 不能为空，已跳过")
                         skipped_rows += 1
                         continue
                     
-                    # 构建物品字典（与 db_manager.batch_import_inventory 期望的格式一致）
+                    # 构建物品字典（已加入 'domain'）
                     item = {
                         'name': name,
                         'reference': reference,
-                        'category': category,  # 新增：支持类别字段
+                        'category': category,
+                        'domain': domain, # 新增 domain 字段
                         'unit': unit,
                         'current_stock': current_stock,
                         'min_stock': min_stock,
@@ -190,8 +199,8 @@ def import_from_csv(filepath: str) -> List[Dict[str, Union[str, int]]]:
             else:
                 logger.warning(f"未读取到有效数据，跳过 {skipped_rows} 条无效记录")
                 
-        return items
-        
+            return items
+            
     except FileNotFoundError:
         logger.error(f"文件未找到: {filepath}")
         return []

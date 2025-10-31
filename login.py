@@ -1,4 +1,4 @@
-# login.py
+# login.py，config表只有id，category和value三个键
 # 仓库管理系统的登录界面和数据库初始化逻辑。
 
 import sys
@@ -33,13 +33,12 @@ DB_FOLDER = 'db'
 def get_base_dir():
     """
     获取程序运行时的基准目录，用于创建外部文件（如数据库）。
-    - 打包环境 (sys.frozen)：返回 EXE 所在的永久目录。
     """
     if getattr(sys, 'frozen', False):
-        # 打包环境：sys.executable 是 EXE 文件的完整路径
+        # 打包环境
         return os.path.dirname(sys.executable)
     else:
-        # 开发环境：__file__ 是当前脚本的路径
+        # 开发环境
         return os.path.dirname(os.path.abspath(__file__))
 
 BASE_DIR = get_base_dir()
@@ -53,7 +52,6 @@ FIXED_DB_PATH = os.path.join(BASE_DIR, DB_FOLDER, DB_FILE)
 def get_resource_path(relative_path):
     """
     获取资源文件的绝对路径，适配开发环境和 PyInstaller 打包环境。
-    目的：用于加载通过 --add-data 打包进 EXE 内部的资源。
     """
     if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
         # 打包环境：使用 PyInstaller 临时目录 (sys._MEIPASS)
@@ -65,7 +63,7 @@ def get_resource_path(relative_path):
 # --- END 资源路径处理函数 ---
 
 
-# --- 数据库操作：基础连接和工具函数 (以下保持不变) ---
+# --- 数据库操作：基础连接和工具函数 ---
 
 def get_db_connection(db_path, create_if_missing=False):
     """根据提供的路径建立 SQLite 连接。"""
@@ -92,7 +90,7 @@ def hash_password(password_plaintext):
     """使用 bcrypt 对明文密码进行哈希"""
     return bcrypt.hashpw(password_plaintext.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
-# --- 业务表初始化逻辑 ---
+# --- 业务表初始化逻辑 (已修复插入语句) ---
 
 def initialize_all_schema(conn):
     """
@@ -131,58 +129,64 @@ def initialize_all_schema(conn):
                 name TEXT NOT NULL,
                 reference TEXT UNIQUE,
                 category TEXT,
+                domain TEXT,
                 unit TEXT,
                 current_stock INTEGER,
                 min_stock INTEGER,
                 location TEXT
-                -- 注意：Inventory 表结构尚未添加 project 字段，后续应在 db_manager 中处理
             )
         """)
         
-        # D. Transactions 表 (交易记录)
+        # D. Transactions 表 (交易记录) 
+        # 🚀 修改点：移除旧的 'REVERSAL' 类型
         cursor.execute("""
-            CREATE TABLE Transactions (
-                id INTEGER PRIMARY KEY,
-                item_id INTEGER,
-                type TEXT NOT NULL, -- 'IN' 或 'OUT'
+            CREATE TABLE IF NOT EXISTS transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                item_id INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                type TEXT NOT NULL CHECK(type IN ('IN', 'OUT', 'REVERSAL-IN', 'REVERSAL-OUT')), 
                 quantity INTEGER NOT NULL,
-                date TEXT,
                 recipient_source TEXT,
                 project_ref TEXT,
-                FOREIGN KEY (item_id) REFERENCES Inventory (id)
+                FOREIGN KEY (item_id) REFERENCES inventory(id)
             )
         """)
         
-        # E. Config 表 (存放自定义配置，如 Location, Unit, Project, Category 选项)
+        # E. Config 表 (存放自定义配置，如 Location, Unit, Project, Category, Domain 选项)
+        # 结构: id, category, value (已按您的要求确认)
         cursor.execute("""
             CREATE TABLE config (
                 id INTEGER PRIMARY KEY,
                 category TEXT NOT NULL,
                 value TEXT NOT NULL,
-                UNIQUE(category, value) 
+                UNIQUE(category, value)
             );
         """)
 
         # F. 插入默认存放位置选项
         default_locations = ["基地仓库", "大仓库", "别墅", "办公楼", "公寓", "其他"]
         for loc in default_locations:
-             # 使用 INSERT OR IGNORE 确保幂等性（虽然在全新数据库中不需要，但更安全）
-             cursor.execute("INSERT OR IGNORE INTO config (category, value) VALUES (?, ?)", ('LOCATION', loc))
-             
+            cursor.execute("INSERT OR IGNORE INTO config (category, value) VALUES (?, ?)", ('LOCATION', loc))
+            
         # G. 插入默认项目选项
         default_projects = ["日常维护", "别墅", "办公楼", "公寓", "基地", "通用"]
         for proj in default_projects:
-             cursor.execute("INSERT OR IGNORE INTO config (category, value) VALUES (?, ?)", ('PROJECT', proj))
+            cursor.execute("INSERT OR IGNORE INTO config (category, value) VALUES (?, ?)", ('PROJECT', proj))
 
-        # H. 插入默认单位选项 (新增)
-        default_units = ["个", "件", "套", "米", "卷", "箱", "KG", "升", "桶","其他"]
+        # H. 插入默认单位选项
+        default_units = ["个", "件", "套", "米", "卷", "箱", "KG", "升", "桶", "其他"]
         for unit in default_units:
-             cursor.execute("INSERT OR IGNORE INTO config (category, value) VALUES (?, ?)", ('UNIT', unit))
+            cursor.execute("INSERT OR IGNORE INTO config (category, value) VALUES (?, ?)", ('UNIT', unit))
 
-        # I. 插入默认材料类别选项 (新增)
+        # I. 插入默认材料类别选项
         default_categories = ["办公用品", "工具耗材", "安防劳保", "电器设备", "建筑材料", "油漆涂料", "五金件", "管件", "电缆线材", "其他"]
         for cat in default_categories:
-             cursor.execute("INSERT OR IGNORE INTO config (category, value) VALUES (?, ?)", ('CATEGORY', cat))
+            cursor.execute("INSERT OR IGNORE INTO config (category, value) VALUES (?, ?)", ('CATEGORY', cat))
+            
+        # J. 插入默认专业类别选项 
+        default_domains = ["强电", "弱电", "给排水", "暖通", "土建", "精装", "其他"]
+        for dom in default_domains:
+            cursor.execute("INSERT OR IGNORE INTO config (category, value) VALUES (?, ?)", ('DOMAIN', dom))
             
         
         conn.commit()
@@ -195,7 +199,7 @@ def initialize_all_schema(conn):
         cursor.close()
         QMessageBox.critical(None, "初始化失败", f"创建表格时发生错误。\n错误内容: {e}")
 
-# --- 登录验证 (应用层验证) ---
+# --- 登录验证 (应用层验证) (保持不变) ---
 
 def validate_user_login(conn, login_user, login_pass_plaintext):
     """在 admin_user 表中验证登录账号和明文密码。"""
@@ -230,7 +234,7 @@ def validate_user_login(conn, login_user, login_pass_plaintext):
         return False
 
 
-# --- PyQt6 应用程序类 ---
+# --- PyQt6 应用程序类 (保持不变) ---
 
 class LoginWindow(QWidget):
     def __init__(self):
@@ -392,7 +396,7 @@ class LoginWindow(QWidget):
         main_layout.addWidget(content_widget) 
 
 
-    # --- 配置读取/保存 ---
+    # --- 配置读取/保存 (保持不变) ---
     
     def load_settings(self):
         """加载配置 (仅加载用户登录信息)"""
@@ -406,7 +410,7 @@ class LoginWindow(QWidget):
         self.settings.sync()
     
     
-    # --- 动作 ---
+    # --- 动作 (保持不变) ---
     
     def test_connection_action(self):
         """测试数据库连接：仅验证文件路径是否正确且可连接。"""

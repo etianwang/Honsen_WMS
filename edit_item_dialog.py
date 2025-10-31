@@ -1,3 +1,4 @@
+# edit_item_dialog.py
 import sys
 from typing import Dict, Any, List, Optional
 from PyQt6.QtWidgets import (
@@ -39,8 +40,10 @@ class EditItemDialog(QDialog):
                 return ["个", "套", "对", "箱"]
             elif category == 'LOCATION':
                 return ["基地仓库", "大仓库", "其他"]
-            elif category == 'CATEGORY': # 新增 CATEGORY 的默认值
+            elif category == 'CATEGORY': 
                 return ["电子元件", "机械零件", "工具", "耗材", "其他"]
+            elif category == 'DOMAIN': # 新增 DOMAIN 的默认值
+                return ["电气", "暖通", "水务", "通用"]
             return []
         except Exception as e:
             QMessageBox.critical(self, "加载错误", f"无法加载 {category} 选项: {e}", QMessageBox.StandardButton.Ok)
@@ -56,8 +59,9 @@ class EditItemDialog(QDialog):
         fields = [
             ("物品名称 (Name):", 'name', 'text'),
             ("物品型号 (Ref):", 'reference', 'text'),
-            # **** 新增材料类别 (Category) 下拉框 ****
             ("材料类别 (Category):", 'category', 'combo_category'), 
+            # **** 新增专业 (Domain) 下拉框 ****
+            ("专业 (Domain):", 'domain', 'combo_domain'), 
             ("计量单位 (Unit):", 'unit', 'combo_unit'), 
             ("最小库存 (Min Stock):", 'min_stock', 'spin'),
             ("存放位置 (Location):", 'location', 'combo_location') 
@@ -94,6 +98,11 @@ class EditItemDialog(QDialog):
                 # 动态加载材料类别选项
                 category_options = self.load_config_options('CATEGORY')
                 entry.addItems(category_options)
+            elif input_type == 'combo_domain':
+                entry = QComboBox()
+                # 动态加载专业选项 (新增逻辑)
+                domain_options = self.load_config_options('DOMAIN')
+                entry.addItems(domain_options)
             elif input_type == 'combo_unit':
                 entry = QComboBox()
                 # 动态加载计量单位选项
@@ -143,6 +152,7 @@ class EditItemDialog(QDialog):
                 if index != -1:
                     entry.setCurrentIndex(index)
                 else:
+                    # 如果原值不在列表中，尝试设置为该文本（可能在后面添加）
                     entry.setCurrentText(str(value))
 
 
@@ -169,22 +179,22 @@ class EditItemDialog(QDialog):
                 # 从 QComboBox 获取当前选中的文本
                 data[key] = entry.currentText()
         
-        # 调用数据库管理器进行更新操作 (注意：假定 update_inventory_item 已更新以接受 category)
+        # 调用数据库管理器进行更新操作 
         try:
             success = db_manager.update_inventory_item(
                 db_path=self.db_path,
                 item_id=self.item_id,
                 name=data['name'],
                 reference=data['reference'],
-                # **** 传递新增的 category 字段 ****
                 category=data['category'],
+                domain=data['domain'], # **** 传递新增的 domain 字段 ****
                 unit=data['unit'],
                 min_stock=data['min_stock'],
                 location=data['location']
             )
         except TypeError as e:
             QMessageBox.critical(self, "数据库管理器错误", 
-                                 f"更新物品失败！错误：{e}\n请确保 db_manager.py 中的 update_inventory_item 函数已更新以接受 'category' 参数。")
+                                 f"更新物品失败！错误：{e}\n请确保 db_manager.py 中的 update_inventory_item 函数已更新以接受 'category' 和 'domain' 参数。")
             return
         
         if success:
@@ -202,7 +212,8 @@ if __name__ == '__main__':
         _options: Dict[str, List[str]] = {
             "UNIT": ["个", "套", "对", "箱", "卷", "米"],
             "LOCATION": ["基地仓库", "大仓库", "别墅", "办公楼", "公寓", "其他"],
-            "CATEGORY": ["电子元件", "机械零件", "工具", "耗材", "其他"] # 增加 CATEGORY 模拟数据
+            "CATEGORY": ["电子元件", "机械零件", "工具", "耗材", "其他"], 
+            "DOMAIN": ["电气", "暖通", "水务", "通用"] # 增加 DOMAIN 模拟数据
         }
         
         @staticmethod
@@ -213,8 +224,8 @@ if __name__ == '__main__':
         @staticmethod
         def update_inventory_item(*args, **kwargs):
             print("--- Mock DB Update Called ---")
-            # 打印所有更新的参数
-            print(f"ID: {kwargs.get('item_id')}, Name: {kwargs.get('name')}, Category: {kwargs.get('category')}, Unit: {kwargs.get('unit')}, Location: {kwargs.get('location')}")
+            # 打印所有更新的参数 (已包含 domain)
+            print(f"ID: {kwargs.get('item_id')}, Name: {kwargs.get('name')}, Category: {kwargs.get('category')}, Domain: {kwargs.get('domain')}, Unit: {kwargs.get('unit')}, Location: {kwargs.get('location')}")
             return True
             
     db_manager = MockDBManager()
@@ -224,7 +235,8 @@ if __name__ == '__main__':
         'id': 101,
         'name': 'LED灯管',
         'reference': 'TL-LED-18W',
-        'category': '电子元件', # 增加 category 字段，以便加载时能选中
+        'category': '电子元件', 
+        'domain': '电气', # 增加 domain 字段，以便加载时能选中
         'unit': '套', 
         'current_stock': 55,
         'min_stock': 10,
