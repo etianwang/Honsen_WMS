@@ -156,7 +156,7 @@ class TransactionPage(QWidget):
         self.headers = [
             "ID", "日期/时间", "      物品名称     ", "物品型号/规格", 
             "物品数量",  # <--- 移动到这里
-            "储存位置", "专业", "物品类型", "接收人/来源", "出库项目"
+            "储存位置", "专业", "物品类型", "接收人/柜号", "出库项目"
         ]
         self.transaction_table.setColumnCount(len(self.headers))
         self.transaction_table.setHorizontalHeaderLabels(self.headers)
@@ -592,7 +592,7 @@ class TransactionPage(QWidget):
         # 保持导出顺序与表格顺序一致
         csv_headers = [
             "日期/时间", "物品名称", "物品型号", "数量", 
-            "储存位置", "专业", "类型", "接收人/来源", "项目"
+            "储存位置", "专业", "类型", "接收人/柜号", "项目"
         ]
         data_keys = [
             'date', 'item_name', 'item_ref', 'quantity', 

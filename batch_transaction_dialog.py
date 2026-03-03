@@ -50,6 +50,10 @@ class BatchTransactionDialog(QDialog):
         self.all_inventory_items: List[Dict] = db_manager.get_all_inventory(self.db_path)
         self.inventory_map: Dict[str, Dict] = {item.get('reference', ''): dict(item) for item in self.all_inventory_items}
         
+        # 2. 【新增】构建物品与柜号的关联映射 (调用 db_manager 新函数)
+        # 数据结构: { "REF-001": ["柜号A", "柜号B"], ... }
+        self.item_cabinet_map: Dict[str, List[str]] = db_manager.get_item_cabinet_map(self.db_path)
+
         # 从 db_manager 获取配置项
         self.project_options = db_manager.get_config_options(self.db_path, 'PROJECT')
         self.domain_options = db_manager.get_config_options(self.db_path, 'DOMAIN')
@@ -76,7 +80,7 @@ class BatchTransactionDialog(QDialog):
         filter_layout.addWidget(self.location_filter)
         filter_layout.addWidget(QLabel("搜索:"))
         self.search_filter = QLineEdit()
-        self.search_filter.setPlaceholderText("型号/名称")
+        self.search_filter.setPlaceholderText("型号/名称/柜号")
         filter_layout.addWidget(self.search_filter)
         filter_layout.addStretch(1)
 
@@ -99,7 +103,7 @@ class BatchTransactionDialog(QDialog):
         self.remove_row_button = QPushButton("━ 删除行")
         self.recipient_label = QLabel("接收人/来源:")
         self.recipient_entry = QLineEdit()
-        self.recipient_entry.setPlaceholderText("填写柜号/采购方/员工姓名...")
+        self.recipient_entry.setPlaceholderText("柜号/采购方/员工姓名...")
         self.recipient_entry.textChanged.connect(self._check_overall_validity)
 
         control_layout.addWidget(self.add_row_button)
@@ -170,8 +174,24 @@ class BatchTransactionDialog(QDialog):
             if search_text:
                 item_name = item.get('name', '').lower()
                 item_ref = item.get('reference', '').lower()
-                if search_text not in item_name and search_text not in item_ref: continue
+
+
+                # 【新增】检查柜号匹配
+                # 从映射表中获取该物品关联的所有柜号列表
+                associated_cabinets = self.item_cabinet_map.get(item_ref, [])
+                cabinet_match = False
+                for cab in associated_cabinets:
+                    if search_text in cab.lower():
+                        cabinet_match = True
+                        break
+                # 如果 名称不匹配 AND 型号不匹配 AND 柜号也不匹配 -> 跳过
+                if (search_text not in item_name) and \
+                   (search_text not in item_ref) and \
+                   (not cabinet_match):
+                    continue
+            
             self.filtered_inventory_items.append(item)
+            
         self._refresh_table_combos()
 
     def _refresh_table_combos(self):

@@ -24,7 +24,14 @@ class TransactionDialog(QDialog):
         # 初始加载数据
         self.all_inventory_items: List[Dict] = db_manager.get_all_inventory(self.db_path)
         self.filtered_items: List[Dict] = self.all_inventory_items.copy()
-        
+
+
+        # 【新增】2. 构建物品与柜号的关联映射
+        # 数据结构: { "REF-001": ["Cabinet-A", "Box-B"], ... }
+        # 这将用于搜索框的模糊匹配
+        self.item_cabinet_map: Dict[str, List[str]] = db_manager.get_item_cabinet_map(self.db_path)
+
+
         self.init_ui()
 
     def init_ui(self):
@@ -51,7 +58,7 @@ class TransactionDialog(QDialog):
         filter_layout.addWidget(self.location_filter)
         filter_layout.addWidget(QLabel("搜索:"))
         self.search_filter = QLineEdit()
-        self.search_filter.setPlaceholderText("物品名称或型号")
+        self.search_filter.setPlaceholderText("物品/型号/柜号")  # 更新搜索提示，包含柜号
         filter_layout.addWidget(self.search_filter)
         filter_layout.addStretch(1)
         main_layout.addLayout(filter_layout)
@@ -75,10 +82,10 @@ class TransactionDialog(QDialog):
         self.quantity_spin.setValue(1)
         form_layout.addWidget(self.quantity_spin, 1, 1)
 
-        label_text = "来源/柜号 (Source):" if self.type == 'IN' else "接收人 (Recipient):"
+        label_text = "柜号 (Source):" if self.type == 'IN' else "接收人 (Recipient):"
         self.recipient_label = QLabel(label_text)
         self.recipient_entry = QLineEdit()
-        self.recipient_entry.setPlaceholderText("请输入采购地/柜号/员工姓名...")
+        self.recipient_entry.setPlaceholderText("柜号/员工姓名")
         form_layout.addWidget(self.recipient_label, 2, 0, Qt.AlignmentFlag.AlignLeft)
         form_layout.addWidget(self.recipient_entry, 2, 1)
         
@@ -125,7 +132,10 @@ class TransactionDialog(QDialog):
         
         # 1. 重新拉取最新的库存数据
         self.all_inventory_items = db_manager.get_all_inventory(self.db_path)
-        
+
+        # 2. 【重要】重新构建柜号映射 (因为可能有新的交易产生新的柜号关联)
+        self.item_cabinet_map = db_manager.get_item_cabinet_map(self.db_path)
+
         # 2. 刷新筛选器选项（以防新增或删除了物品）
         self._populate_filter_options() 
         
@@ -194,7 +204,23 @@ class TransactionDialog(QDialog):
             if search_text:
                 item_name = item.get('name', '').lower()
                 item_ref = item.get('reference', '').lower()
-                if search_text not in item_name and search_text not in item_ref: continue
+                # 【新增】检查柜号匹配
+                # 获取该物品关联的所有柜号列表
+                associated_cabinets = self.item_cabinet_map.get(item_ref, [])
+                
+                cabinet_match = False
+                for cab in associated_cabinets:
+                    # 模糊匹配：只要搜索词出现在柜号字符串中即可
+                    if search_text in cab.lower():
+                        cabinet_match = True
+                        break
+                
+                # 如果 名称不匹配 AND 型号不匹配 AND 柜号也不匹配 -> 跳过
+                if (search_text not in item_name) and \
+                   (search_text not in item_ref) and \
+                   (not cabinet_match):
+                    continue
+            
             self.filtered_items.append(item)
         
         self._populate_item_combo()

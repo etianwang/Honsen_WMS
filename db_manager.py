@@ -729,7 +729,54 @@ def get_transactions_history(
     finally:
         if conn:
             conn.close()
+
+
+def get_item_cabinet_map(db_path: str) -> Dict[str, List[str]]:
+    """
+    【新增功能】扫描 transactions 表，建立 { reference: [cabinet_list] } 的映射。
+    用于在批量操作对话框中通过柜号 (recipient_source) 反查物品。
+    
+    返回格式: { "REF-001": ["Cabinet-A", "Box-B"], "REF-002": ["Cabinet-C"], ... }
+    """
+    conn = None
+    cabinet_map = {}
+    try:
+        conn = _connect_db(db_path)
+        cursor = conn.cursor()
+        
+        # SQL: 连接 inventory 和 transactions，提取 reference 和 recipient_source
+        # 过滤掉空的 recipient_source
+        query = """
+            SELECT i.reference, t.recipient_source
+            FROM transactions t
+            JOIN inventory i ON t.item_id = i.id
+            WHERE t.recipient_source IS NOT NULL 
+              AND t.recipient_source != ''
+              AND i.reference IS NOT NULL
+        """
+        
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        
+        for ref, source in rows:
+            source = source.strip()
+            if not source:
+                continue
+                
+            if ref not in cabinet_map:
+                cabinet_map[ref] = set() # 使用 set 自动去重
+            cabinet_map[ref].add(source)
             
+        # 将 set 转换为 list 以便后续处理
+        return {k: list(v) for k, v in cabinet_map.items()}
+        
+    except sqlite3.Error as e:
+        print(f"数据库错误：构建柜号映射失败：{e}")
+        return {}
+    finally:
+        if conn:
+            conn.close()      
+
             
 def reverse_transaction(db_path: str, tx_id: int) -> bool:
     """
