@@ -4,7 +4,7 @@
 import sys
 import os
 import sqlite3
-import bcrypt
+import hashlib
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
     QLabel, QLineEdit, QPushButton, QMessageBox, 
@@ -13,6 +13,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QSettings
 from PyQt6.QtGui import QPixmap, QIcon 
 from main import MainWindow # 导入 MainWindow 类
+
+import db_manager  # <--- 确保有这一行，用于调用 enable_wal_mode
 
 # --- 配置和常量 ---
 # 数据库文件名称
@@ -86,15 +88,17 @@ def get_db_connection(db_path, create_if_missing=False):
         QMessageBox.critical(None, "数据库连接错误", f"无法连接数据库文件 '{db_path}'。\n错误: {e}")
         return None
 
-def hash_password(password_plaintext):
-    """使用 bcrypt 对明文密码进行哈希"""
-    return bcrypt.hashpw(password_plaintext.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+# def hash_password(password_plaintext):
+#     """使用 bcrypt 对明文密码进行哈希"""
+#     return bcrypt.hashpw(password_plaintext.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 # --- 业务表初始化逻辑 (已修复插入语句) ---
 
 def initialize_all_schema(conn):
     """
     检查并创建所有表 (admin_user, Inventory, Transactions, config)，并插入默认管理员账号和配置。
+    【已更新】Inventory 表增加了 cabinet 和 initial_cabinet 字段。
+    【已更新】密码加密逻辑与 db_manager.py 保持一致 (SHA256)，防止冲突。
     """
     cursor = conn.cursor()
     
@@ -103,7 +107,7 @@ def initialize_all_schema(conn):
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='admin_user'")
         if cursor.fetchone() is not None:
             cursor.close()
-            QMessageBox.information(None, "初始化提示", "数据库已存在，并非新数据库。跳过创建。")
+            QMessageBox.information(None, "初始化提示", "数据库已存在，并非新数据库。跳过创建。\n(如需重置，请手动删除 db 文件夹下的 .db 文件)")
             return
 
         # 2. 如果不存在，则创建所有表
@@ -118,27 +122,32 @@ def initialize_all_schema(conn):
         """)
         
         # B. 插入默认管理员账号
-        hashed_pass = hash_password(DEFAULT_LOGIN_PASS_PLAINTEXT)
+        # 【重要修改】为了与 db_manager.py 兼容，这里改用 SHA256 哈希 (原代码使用 bcrypt)
+        # 如果您希望全程使用 bcrypt，请确保 db_manager.py 也改为 bcrypt
+        import hashlib
+        default_pass = DEFAULT_LOGIN_PASS_PLAINTEXT
+        hashed_pass = hashlib.sha256(default_pass.encode('utf-8')).hexdigest()
+        
         cursor.execute("INSERT INTO admin_user (username, password) VALUES (?, ?)", 
                              (DEFAULT_LOGIN_USER, hashed_pass))
         
-        # C. Inventory 表 (库存物品)
+        # C. Inventory 表 (库存物品) - 【核心修改点】
         cursor.execute("""
             CREATE TABLE Inventory (
-                id INTEGER PRIMARY KEY,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 reference TEXT UNIQUE,
                 category TEXT,
                 domain TEXT,
                 unit TEXT,
-                current_stock INTEGER,
-                min_stock INTEGER,
-                location TEXT
+                current_stock INTEGER DEFAULT 0,
+                min_stock INTEGER DEFAULT 0,
+                location TEXT,
+                cabinet TEXT DEFAULT ''          -- 【新增】当前柜号
             )
         """)
         
         # D. Transactions 表 (交易记录) 
-        # 🚀 修改点：移除旧的 'REVERSAL' 类型
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS transactions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -148,15 +157,14 @@ def initialize_all_schema(conn):
                 quantity INTEGER NOT NULL,
                 recipient_source TEXT,
                 project_ref TEXT,
-                FOREIGN KEY (item_id) REFERENCES inventory(id)
+                FOREIGN KEY (item_id) REFERENCES Inventory(id)
             )
         """)
         
-        # E. Config 表 (存放自定义配置，如 Location, Unit, Project, Category, Domain 选项)
-        # 结构: id, category, value (已按您的要求确认)
+        # E. Config 表 (存放自定义配置)
         cursor.execute("""
             CREATE TABLE config (
-                id INTEGER PRIMARY KEY,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 category TEXT NOT NULL,
                 value TEXT NOT NULL,
                 UNIQUE(category, value)
@@ -191,18 +199,24 @@ def initialize_all_schema(conn):
         
         conn.commit()
         cursor.close()
-        QMessageBox.information(None, "初始化成功", 
-                                 f"所有表格已创建，默认管理员 ({DEFAULT_LOGIN_USER}/{DEFAULT_LOGIN_PASS_PLAINTEXT}) 已设置！")
+        
+        msg = (f"所有表格已创建成功！\n\n"
+               f"✅ Inventory 表已包含：cabinet, initial_cabinet 字段\n"
+               f"✅ 默认管理员账号：{DEFAULT_LOGIN_USER}\n"
+               f"✅ 默认密码：{DEFAULT_LOGIN_PASS_PLAINTEXT}")
+               
+        QMessageBox.information(None, "初始化成功", msg)
         
     except Exception as e:
         conn.rollback()
         cursor.close()
-        QMessageBox.critical(None, "初始化失败", f"创建表格时发生错误。\n错误内容: {e}")
-
+        QMessageBox.critical(None, "初始化失败", f"创建表格时发生错误。\n错误内容：{e}")
+        import traceback
+        traceback.print_exc()
 # --- 登录验证 (应用层验证) (保持不变) ---
 
 def validate_user_login(conn, login_user, login_pass_plaintext):
-    """在 admin_user 表中验证登录账号和明文密码。"""
+    """在 admin_user 表中验证登录账号和明文密码 (使用 SHA-256)。"""
     if not conn:
         return False
         
@@ -225,12 +239,21 @@ def validate_user_login(conn, login_user, login_pass_plaintext):
             
         stored_hashed_password = result[0]
         
-        # 使用 bcrypt 校验密码
-        return bcrypt.checkpw(login_pass_plaintext.encode('utf-8'), 
-                              stored_hashed_password.encode('utf-8'))
+        # ✅ 【修改点】使用 SHA-256 进行验证
+        # 逻辑：将用户输入的密码直接进行 SHA-256 哈希，然后与数据库中的哈希值比对
+        # 注意：你的初始化代码里没有加盐，所以这里也不加盐，保持绝对一致
+        computed_hash = hashlib.sha256(login_pass_plaintext.encode('utf-8')).hexdigest()
+        
+        # 比对哈希值 (去除可能的首尾空格)
+        if computed_hash == stored_hashed_password.strip():
+            return True
+        else:
+            return False
 
     except Exception as e:
         QMessageBox.critical(None, "登录验证错误", f"登录验证时发生错误。\n错误: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
@@ -452,7 +475,12 @@ class LoginWindow(QWidget):
 
         if validate_user_login(conn, login_user, login_pass):
             conn.close()
-            
+
+            # ✅【关键修改】调用 db_manager 中的函数开启 WAL 模式
+            # 这能解决编辑保存后界面卡死的问题
+            print("🔧 正在配置数据库并发模式 (WAL)...")
+            db_manager.enable_wal_mode(db_path) 
+
             self.save_settings()
             QMessageBox.information(self, "登录成功", f"欢迎回来, {login_user}！正在启动系统...")
             

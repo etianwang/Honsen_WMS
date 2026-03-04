@@ -63,6 +63,7 @@ class EditItemDialog(QDialog):
             # **** 新增专业 (Domain) 下拉框 ****
             ("专业 (Domain):", 'domain', 'combo_domain'), 
             ("计量单位 (Unit):", 'unit', 'combo_unit'), 
+            ("当前柜号 (Cabinet):", 'cabinet', 'text'), # 【新增】当前柜号输入框
             ("最小库存 (Min Stock):", 'min_stock', 'spin'),
             ("存放位置 (Location):", 'location', 'combo_location') 
         ]
@@ -88,6 +89,7 @@ class EditItemDialog(QDialog):
                 # 名称和编号必填，连接校验函数
                 if key in ['name', 'reference']:
                     entry.textChanged.connect(self.validate_inputs) 
+                    
             elif input_type == 'spin':
                 entry = QSpinBox()
                 entry.setRange(0, 999999) 
@@ -96,21 +98,25 @@ class EditItemDialog(QDialog):
             elif input_type == 'combo_category':
                 entry = QComboBox()
                 # 动态加载材料类别选项
+                entry.setEditable(True)  # 【新增】允许手动输入
                 category_options = self.load_config_options('CATEGORY')
                 entry.addItems(category_options)
             elif input_type == 'combo_domain':
                 entry = QComboBox()
                 # 动态加载专业选项 (新增逻辑)
+                entry.setEditable(True)  # 【新增】允许手动输入
                 domain_options = self.load_config_options('DOMAIN')
                 entry.addItems(domain_options)
             elif input_type == 'combo_unit':
                 entry = QComboBox()
                 # 动态加载计量单位选项
+                entry.setEditable(True)  # 【新增】允许手动输入
                 unit_options = self.load_config_options('UNIT')
                 entry.addItems(unit_options)
             elif input_type == 'combo_location':
                 entry = QComboBox()
                 # 动态加载存放位置选项
+                entry.setEditable(True)  # 【新增】允许手动输入
                 location_options = self.load_config_options('LOCATION')
                 entry.addItems(location_options)
             
@@ -152,8 +158,18 @@ class EditItemDialog(QDialog):
                 if index != -1:
                     entry.setCurrentIndex(index)
                 else:
+                    
+                    # entry.setCurrentText(str(value))
+
                     # 如果原值不在列表中，尝试设置为该文本（可能在后面添加）
-                    entry.setCurrentText(str(value))
+                    # 注意：QComboBox 没有 setCurrentText 方法在所有版本都可用，
+                    # 但 addItem 可以动态添加。这里为了简单，如果找不到就设为空或第一个。
+                    # 更稳健的做法是确保 config 表里有这个值，或者允许用户手动输入后自动加入 config。
+                    # 这里暂时保持原逻辑，如果找不到就不选中，用户需手动选择或输入（如果是可编辑的 ComboBox）。
+                    # 对于标准 QComboBox，如果值不在列表里，它不会显示该值。
+                    # 如果需要显示不在列表里的值，可以考虑使用 QComboBox.setEditable(True)
+                    pass 
+                    # 如果希望允许输入不在列表中的值，可以在 init_ui 中设置 entry.setEditable(True)
 
 
     def validate_inputs(self):
@@ -167,8 +183,9 @@ class EditItemDialog(QDialog):
         
     def accept_action(self):
         """当用户点击 OK 按钮时执行的操作：更新数据库。"""
+        print("💾 [EditDialog] 开始保存操作...")
         
-        # 收集数据
+        # 1. 收集数据
         data: Dict[str, Any] = {}
         for key, entry in self.entries.items():
             if isinstance(entry, QLineEdit):
@@ -176,35 +193,71 @@ class EditItemDialog(QDialog):
             elif isinstance(entry, QSpinBox):
                 data[key] = entry.value()
             elif isinstance(entry, QComboBox):
-                # 从 QComboBox 获取当前选中的文本
-                data[key] = entry.currentText()
+                data[key] = entry.currentText().strip()
         
-        # 调用数据库管理器进行更新操作 
+        # 简单校验
+        if not data.get('name') or not data.get('reference'):
+            QMessageBox.warning(self, "输入错误", "名称和型号不能为空！")
+            return
+
+        # 2. 【新增】自动将新选项写入 Config 表 (防止因配置表缺失导致后续问题)
+        config_mapping = {
+            'category': 'CATEGORY',
+            'domain': 'DOMAIN',
+            'unit': 'UNIT',
+            'location': 'LOCATION'
+        }
         try:
-            success = db_manager.update_inventory_item(
+            for field_key, config_cat in config_mapping.items():
+                val = data.get(field_key, '')
+                if val:
+                    # 忽略插入失败的错误 (如已存在)
+                    db_manager.insert_config_option(self.db_path, config_cat, val)
+        except Exception as e:
+            print(f"⚠️ [EditDialog] 更新配置表警告 (可忽略): {e}")
+
+        # 3. 调用数据库管理器进行更新
+        try:
+            print(f"🔄 [EditDialog] 正在调用 update_Inventory_item (ID: {self.item_id})...")
+            
+            success = db_manager.update_Inventory_item(
                 db_path=self.db_path,
                 item_id=self.item_id,
                 name=data['name'],
                 reference=data['reference'],
                 category=data['category'],
-                domain=data['domain'], # **** 传递新增的 domain 字段 ****
+                domain=data['domain'],
                 unit=data['unit'],
                 min_stock=data['min_stock'],
-                location=data['location']
+                location=data['location'],
+                cabinet=data['cabinet']
             )
-        except TypeError as e:
-            QMessageBox.critical(self, "数据库管理器错误", 
-                                 f"更新物品失败！错误：{e}\n请确保 db_manager.py 中的 update_inventory_item 函数已更新以接受 'category' 和 'domain' 参数。")
-            return
-        
-        if success:
-            QMessageBox.information(self, "成功", f"物品 '{data['name']}' (ID: {self.item_id}) 更新成功！")
-            super().accept() # 关闭对话框
-        else:
-            # 失败通常是由于 reference 编号重复或 ID 不存在
-            QMessageBox.critical(self, "操作失败", f"更新物品失败！物品编号 '{data['reference']}' 可能已存在或未修改任何数据。")
-            return
             
+            print(f"✅ [EditDialog] 数据库返回结果: {success}")
+
+            if success:
+                QMessageBox.information(self, "成功", f"物品 '{data['name']}' 更新成功！")
+                
+                # 【关键修复】强制关闭对话框
+                # 使用 self.done() 比 super().accept() 更可靠，确保模态窗口彻底销毁
+                print("🚪 [EditDialog] 正在强制关闭对话框...")
+                self.done(QDialog.DialogCode.Accepted) 
+                return
+            else:
+                # 更新失败 (通常是 Reference 重复)
+                QMessageBox.critical(self, "操作失败", f"更新物品失败！\n可能原因：物品编号 '{data['reference']}' 已被其他物品使用。")
+                # 不要关闭对话框，让用户修改
+                
+        except TypeError as te:
+            print(f"❌ [EditDialog] 参数类型错误: {te}")
+            QMessageBox.critical(self, "代码错误", f"数据库函数参数不匹配！\n请检查 db_manager.py 的 update_Inventory_item 定义。\n详情：{te}")
+            # 不关闭对话框
+        except Exception as e:
+            print(f"❌ [EditDialog] 发生未知异常: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(self, "系统错误", f"保存时发生未知错误：\n{e}")
+            # 不关闭对话框            
 # --- 测试代码 ---
 if __name__ == '__main__':
     # 为了运行测试，这里提供一个简化的 db_manager 存根，包含 get_config_options
@@ -222,10 +275,10 @@ if __name__ == '__main__':
             return MockDBManager._options.get(category, [])
             
         @staticmethod
-        def update_inventory_item(*args, **kwargs):
+        def update_Inventory_item(*args, **kwargs):
             print("--- Mock DB Update Called ---")
             # 打印所有更新的参数 (已包含 domain)
-            print(f"ID: {kwargs.get('item_id')}, Name: {kwargs.get('name')}, Category: {kwargs.get('category')}, Domain: {kwargs.get('domain')}, Unit: {kwargs.get('unit')}, Location: {kwargs.get('location')}")
+            print(f"ID: {kwargs.get('item_id')}, Name: {kwargs.get('name')}, Category: {kwargs.get('category')}, Domain: {kwargs.get('domain')}, Unit: {kwargs.get('unit')}, Location: {kwargs.get('location')}, Cabinet: {kwargs.get('cabinet')}")
             return True
             
     db_manager = MockDBManager()
@@ -238,6 +291,7 @@ if __name__ == '__main__':
         'category': '电子元件', 
         'domain': '电气', # 增加 domain 字段，以便加载时能选中
         'unit': '套', 
+        'cabinet': 'A-01', # 测试数据包含柜号
         'current_stock': 55,
         'min_stock': 10,
         'location': '别墅'

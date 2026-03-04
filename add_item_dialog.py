@@ -61,6 +61,7 @@ class AddItemDialog(QDialog):
             ("材料类别 (Category):", 'category', 'combo', self._get_category_options()),
             ("专业类别 (Domain):", 'domain', 'combo', self._get_domain_options()),  # 新增
             ("计量单位 (Unit):", 'unit', 'combo', self._get_unit_options()),
+            ("初始柜号 (Cabinet):", 'cabinet', 'text', ""), # 【新增】初始柜号输入框
             ("初始库存 (Stock):", 'current_stock', 'spin', 0),
             ("最小库存 (Min Stock):", 'min_stock', 'spin', 5),
             ("存放位置 (Location):", 'location', 'combo', self._get_location_options())
@@ -147,7 +148,8 @@ class AddItemDialog(QDialog):
                 unit=data['unit'].strip(),
                 current_stock=data['current_stock'], 
                 min_stock=data['min_stock'], 
-                location=data['location'].strip()
+                location=data['location'].strip(),
+                cabinet=data['cabinet'].strip() # 【新增】传递初始柜号
             )
             
             if new_id is not None:
@@ -166,5 +168,5 @@ class AddItemDialog(QDialog):
             
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    print("请确保 db_manager.py 存在且已更新以支持 domain 字段后再运行。")
+    print("请确保 db_manager.py 存在且已更新以支持 cabinet 字段后再运行。")
     sys.exit(0)

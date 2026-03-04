@@ -81,135 +81,116 @@ def export_to_csv(
 
 def import_from_csv(filepath: str) -> List[Dict[str, Union[str, int]]]:
     """
-    从 CSV 文件导入库存数据，返回一个字典列表。
-    
-    支持的字段:
-    - 必需: name, reference, unit, min_stock, location, domain (新增)
-    - 可选: category, current_stock
-    
-    :param filepath: 源 CSV 文件路径。
-    :return: 包含导入数据的字典列表。空列表表示导入失败或无有效数据。
+    【终极修复版】从 CSV 导入数据，专治中文乱码/问号问题。
     """
+    import csv
+    import io
+    from pathlib import Path
+    
     items = []
-    # 必需字段列表（已加入 'domain'）
-    required_headers = ['name', 'reference', 'unit', 'min_stock', 'location', 'domain']
+    filepath_obj = Path(filepath)
     
-    filepath = Path(filepath)
+    if not filepath_obj.exists():
+        print(f"❌ 文件不存在: {filepath}")
+        return []
+
+    # 1. 确定编码：只试两个最可能的，成功即停
+    content = ""
+    final_encoding = ""
     
-    try:
-        if not filepath.exists():
-            logger.error(f"文件未找到: {filepath}")
-            return []
-        
-        # 尝试多种编码方式
-        encoding = _detect_encoding(filepath)
-        logger.info(f"检测到文件编码: {encoding}")
-        
-        with open(filepath, 'r', encoding=encoding) as csvfile:
-            reader = csv.DictReader(csvfile)
-            
-            # 去除 BOM 和空格的表头
-            if reader.fieldnames:
-                reader.fieldnames = [field.strip() for field in reader.fieldnames]
-            
-            # 验证表头是否包含所有必需字段
-            missing_headers = [h for h in required_headers if h not in reader.fieldnames]
-            if missing_headers:
-                logger.error(f"CSV 文件缺少必需的字段: {', '.join(missing_headers)}")
-                raise CSVImportError(
-                    f"CSV 文件缺少必需的字段: {', '.join(missing_headers)}\n"
-                    f"需要的字段: {', '.join(required_headers)}"
-                )
-            
-            row_num = 1  # 用于错误报告（不含表头）
-            skipped_rows = 0
-            
-            for row in reader:
-                row_num += 1
-                try:
-                    # 处理数字字段：current_stock 和 min_stock
-                    current_stock = int(row.get('current_stock', 0) or 0)
-                    min_stock_str = row.get('min_stock', '0').strip()
-                    
-                    # 防止空字符串导致 ValueError
-                    if not min_stock_str:
-                        min_stock_str = '0'
-                    
-                    min_stock = int(min_stock_str)
-                    
-                    # 验证数值合法性
-                    if current_stock < 0:
-                        logger.warning(f"第 {row_num} 行: current_stock 为负数，已设为 0")
-                        current_stock = 0
-                    
-                    if min_stock < 0:
-                        logger.warning(f"第 {row_num} 行: min_stock 为负数，已设为 0")
-                        min_stock = 0
-                    
-                    # 处理 category 字段（可选，默认为 '其他'）
-                    category = row.get('category', '其他').strip()
-                    if not category:
-                        category = '其他'
-                    
-                    # 验证必需字段不为空 (新增 domain)
-                    name = row['name'].strip()
-                    reference = row['reference'].strip()
-                    unit = row['unit'].strip()
-                    location = row['location'].strip()
-                    domain = row['domain'].strip() # 获取 domain
-                    
-                    if not all([name, reference, unit, location, domain]): # 检查 domain
-                        missing_fields = []
-                        if not name: missing_fields.append('name')
-                        if not reference: missing_fields.append('reference')
-                        if not unit: missing_fields.append('unit')
-                        if not location: missing_fields.append('location')
-                        if not domain: missing_fields.append('domain') # 检查 domain
-                        
-                        logger.warning(f"第 {row_num} 行: 必需字段 {', '.join(missing_fields)} 不能为空，已跳过")
-                        skipped_rows += 1
-                        continue
-                    
-                    # 构建物品字典（已加入 'domain'）
-                    item = {
-                        'name': name,
-                        'reference': reference,
-                        'category': category,
-                        'domain': domain, # 新增 domain 字段
-                        'unit': unit,
-                        'current_stock': current_stock,
-                        'min_stock': min_stock,
-                        'location': location
-                    }
-                    items.append(item)
-                    
-                except KeyError as e:
-                    logger.warning(f"第 {row_num} 行: 缺少关键字段 {e}，已跳过")
-                    skipped_rows += 1
-                except ValueError as e:
-                    logger.warning(f"第 {row_num} 行: 数据类型转换错误 ({e})，已跳过")
-                    skipped_rows += 1
-                except Exception as e:
-                    logger.warning(f"第 {row_num} 行: 未知错误 ({e})，已跳过")
-                    skipped_rows += 1
-            
-            # 导入总结
-            if items:
-                logger.info(f"成功读取 {len(items)} 条记录，跳过 {skipped_rows} 条无效记录")
-            else:
-                logger.warning(f"未读取到有效数据，跳过 {skipped_rows} 条无效记录")
-                
-            return items
-            
-    except FileNotFoundError:
-        logger.error(f"文件未找到: {filepath}")
+    # 顺序很重要：utf-8-sig 能处理带 BOM 的 UTF-8 (Excel 另存为)，gbk 处理默认保存
+    for enc in ['utf-8-sig', 'gbk', 'utf-8']:
+        try:
+            with open(filepath_obj, 'r', encoding=enc, newline='') as f:
+                content = f.read()
+                final_encoding = enc
+                break
+        except UnicodeDecodeError:
+            continue
+    
+    if not content:
+        print(f"❌ 无法读取文件，所有编码尝试失败: {filepath}")
         return []
-    except CSVImportError as e:
-        logger.error(f"导入验证失败: {e}")
+
+    print(f"ℹ️  成功使用 [{final_encoding}] 编码读取文件。")
+
+    # 2. 转为内存文件对象
+    f_io = io.StringIO(content)
+    
+    # 3. 创建 Reader
+    reader = csv.DictReader(f_io)
+    
+    # 4. 【关键】清洗表头 (去除 BOM 和空格)
+    if reader.fieldnames:
+        cleaned_headers = [h.strip().replace('\ufeff', '') for h in reader.fieldnames]
+        reader.fieldnames = cleaned_headers
+        print(f"ℹ️  识别到的表头: {reader.fieldnames}")
+    else:
+        print("❌ CSV 文件为空或无表头")
         return []
-    except Exception as e:
-        logger.error(f"导入 CSV 失败: {e}")
+
+    # 5. 验证必需字段
+    required = ['name', 'reference', 'unit', 'min_stock', 'location', 'domain']
+    missing = [f for f in required if f not in reader.fieldnames]
+    if missing:
+        print(f"❌ 缺少必需列: {missing}")
+        print(f"   当前列: {reader.fieldnames}")
         return []
+
+    # 6. 逐行解析
+    has_cabinet = 'cabinet' in reader.fieldnames
+    success_count = 0
+    error_count = 0
+
+    for i, row in enumerate(reader, start=2): # 从第2行开始(第1行是表头)
+        try:
+            # 获取并清洗数据
+            name = row.get('name', '').strip()
+            reference = row.get('reference', '').strip()
+            
+            # 🔴 调试核心：如果读出来是问号，这里立刻就能发现！
+            if '?' in name or not name:
+                print(f"⚠️  第 {i} 行数据异常: name='{name}' (可能是编码错误或源文件已损坏)")
+                # 如果源文件本身就是 ???，那神仙也救不了，必须检查 CSV 原文件
+                error_count += 1
+                continue
+
+            domain = row.get('domain', '').strip() or '其他'
+            category = row.get('category', '').strip() or '其他'
+            unit = row.get('unit', '').strip()
+            location = row.get('location', '').strip()
+            cabinet = row.get('cabinet', '').strip() if has_cabinet else ''
+            
+            # 数字处理
+            try:
+                min_stock = int(row.get('min_stock', '0').strip() or '0')
+                current_stock = int(row.get('current_stock', '0').strip() or '0')
+            except ValueError:
+                print(f"⚠️  第 {i} 行数字格式错误，跳过")
+                error_count += 1
+                continue
+
+            # 构建对象
+            item = {
+                'name': name,
+                'reference': reference,
+                'category': category,
+                'domain': domain,
+                'unit': unit,
+                'current_stock': current_stock,
+                'min_stock': min_stock,
+                'location': location,
+                'cabinet': cabinet
+            }
+            items.append(item)
+            success_count += 1
+            
+        except Exception as e:
+            print(f"⚠️  第 {i} 行解析错误: {e}")
+            error_count += 1
+
+    print(f"✅ 导入完成：成功 {success_count} 条，跳过/错误 {error_count} 条")
+    return items
 
 
 def validate_inventory_data(items: List[Dict]) -> tuple[List[Dict], List[str]]:

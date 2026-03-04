@@ -8,7 +8,7 @@ import sys
 from typing import List, Dict
 from PyQt6.QtWidgets import (
     QDialog, QDialogButtonBox, QVBoxLayout, QGridLayout, 
-    QLabel, QSpinBox, QMessageBox, QApplication, 
+    QLabel, QSpinBox, QMessageBox, QApplication, QLineEdit,
     QComboBox, QCheckBox, QGroupBox, QScrollArea
 )
 from PyQt6.QtCore import Qt
@@ -164,6 +164,21 @@ class BatchEditDialog(QDialog):
         form_layout.addWidget(self.location_checkbox, row, 0)
         form_layout.addWidget(self.location_combo, row, 1)
         row += 1
+
+        # ================= 新增开始 =================
+        # --- 6. 当前柜号 (Cabinet) ---
+        self.cabinet_checkbox = QCheckBox("修改当前柜号 (Cabinet)")
+        self.cabinet_entry = QLineEdit()
+        self.cabinet_entry.setPlaceholderText("例如：A-01, B-02")
+        self.cabinet_entry.setEnabled(False)
+        self.cabinet_checkbox.stateChanged.connect(
+            lambda state: self.cabinet_entry.setEnabled(state == Qt.CheckState.Checked.value)
+        )
+        
+        form_layout.addWidget(self.cabinet_checkbox, row, 0)
+        form_layout.addWidget(self.cabinet_entry, row, 1)
+        row += 1
+        # ================= 新增结束 =================
         
         main_layout.addLayout(form_layout)
         
@@ -186,7 +201,8 @@ class BatchEditDialog(QDialog):
             self.domain_checkbox.isChecked(),  # 检查 domain 是否选中
             self.unit_checkbox.isChecked(),
             self.min_stock_checkbox.isChecked(),
-            self.location_checkbox.isChecked()
+            self.location_checkbox.isChecked(),
+            self.cabinet_checkbox.isChecked()  # 新增
         ]):
             QMessageBox.warning(
                 self, 
@@ -208,6 +224,11 @@ class BatchEditDialog(QDialog):
         if self.location_checkbox.isChecked():
             checked_fields.append(f"存放位置 → {self.location_combo.currentText()}")
         
+        
+        if self.cabinet_checkbox.isChecked():
+            checked_fields.append(f"当前柜号 → {self.cabinet_entry.text().strip()}")
+        
+
         fields_text = "\n".join([f"  • {field}" for field in checked_fields])
         
         reply = QMessageBox.question(
@@ -240,6 +261,8 @@ class BatchEditDialog(QDialog):
                 unit = self.unit_combo.currentText() if self.unit_checkbox.isChecked() else item['unit']
                 min_stock = self.min_stock_spin.value() if self.min_stock_checkbox.isChecked() else item['min_stock']
                 location = self.location_combo.currentText() if self.location_checkbox.isChecked() else item['location']
+                # 获取柜号：如果勾选了用新值，否则保留原值
+                cabinet = self.cabinet_entry.text().strip() if self.cabinet_checkbox.isChecked() else item.get('cabinet', '')
                 
                 # 调用数据库更新
                 if db_manager.update_inventory_item(
@@ -251,7 +274,9 @@ class BatchEditDialog(QDialog):
                     domain=domain,  # 传递 domain 字段
                     unit=unit,
                     min_stock=min_stock,
-                    location=location
+                    location=location,
+                    cabinet=cabinet  # 传递当前柜号
+
                 ):
                     success_count += 1
                 else:
@@ -302,9 +327,9 @@ if __name__ == '__main__':
     
     test_items = [
         {'id': 1, 'name': 'LED灯管', 'reference': 'LED-001', 'category': '电子元件', 
-         'domain': '弱电', 'unit': '个', 'min_stock': 10, 'location': '大仓库'},
+         'domain': '弱电', 'unit': '个', 'min_stock': 10, 'location': '大仓库', 'cabinet': 'A-01'},
         {'id': 2, 'name': '螺丝刀', 'reference': 'TOOL-001', 'category': '工具', 
-         'domain': '通用', 'unit': '套', 'min_stock': 5, 'location': '基地仓库'}
+         'domain': '通用', 'unit': '套', 'min_stock': 5, 'location': '基地仓库', 'cabinet': ''}
     ]
     
     dialog = BatchEditDialog('test_storage.db', test_items)

@@ -175,19 +175,23 @@ class BatchTransactionDialog(QDialog):
                 item_name = item.get('name', '').lower()
                 item_ref = item.get('reference', '').lower()
 
+                # [新增] 1. 检查当前柜号 (Inventory 表)
+                item_cabinet = (item.get('cabinet', '') or '').lower()
+                current_cabinet_match = search_text in item_cabinet
 
-                # 【新增】检查柜号匹配
-                # 从映射表中获取该物品关联的所有柜号列表
+                # [已有] 2. 检查入库柜号 (Transactions 表 - 历史)
                 associated_cabinets = self.item_cabinet_map.get(item_ref, [])
-                cabinet_match = False
+                history_cabinet_match = False
                 for cab in associated_cabinets:
                     if search_text in cab.lower():
-                        cabinet_match = True
+                        history_cabinet_match = True
                         break
-                # 如果 名称不匹配 AND 型号不匹配 AND 柜号也不匹配 -> 跳过
-                if (search_text not in item_name) and \
-                   (search_text not in item_ref) and \
-                   (not cabinet_match):
+
+                # 只要有一个匹配就保留
+                if not (search_text in item_name or 
+                        search_text in item_ref or 
+                        current_cabinet_match or 
+                        history_cabinet_match):
                     continue
             
             self.filtered_inventory_items.append(item)

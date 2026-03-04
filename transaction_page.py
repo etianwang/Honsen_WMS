@@ -154,9 +154,16 @@ class TransactionPage(QWidget):
         # 定义新的表头顺序：数量 (7) 移到 物品型号/规格 (3) 后面，作为第 4 列
         # 新顺序: ID(0), 日期/时间(1), 物品名称(2), 物品型号/规格(3), 物品数量(4), 储存位置(5), 专业(6), 物品类型(7), 接收人/来源(8), 出库项目(9)
         self.headers = [
-            "ID", "日期/时间", "      物品名称     ", "物品型号/规格", 
-            "物品数量",  # <--- 移动到这里
-            "储存位置", "专业", "物品类型", "接收人/柜号", "出库项目"
+            "ID", "日期/时间",
+            "      物品名称     ",
+            "物品型号/规格", 
+            "物品数量", 
+            "储存位置",
+            "    柜号    ",
+            "专业",
+            "物品类型",
+            "接收人/柜号",
+            "出库项目"
         ]
         self.transaction_table.setColumnCount(len(self.headers))
         self.transaction_table.setHorizontalHeaderLabels(self.headers)
@@ -164,10 +171,11 @@ class TransactionPage(QWidget):
         # 调整列宽
         self.transaction_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.transaction_table.horizontalHeader().resizeSection(1, 160) # 日期
-        self.transaction_table.horizontalHeader().resizeSection(2, 300) # 名称
+        self.transaction_table.horizontalHeader().resizeSection(2, 380) # 名称
         self.transaction_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch) # 型号/规格
         self.transaction_table.horizontalHeader().resizeSection(4, 80) # 数量 (新位置)
         self.transaction_table.horizontalHeader().resizeSection(5, 120) # 储存位置 (新位置)
+        self.transaction_table.horizontalHeader().resizeSection(6, 300) # ✅ 新增：柜号列宽
         # 其余列使用 ResizeToContents 或默认
         
         main_layout.addWidget(self.transaction_table)
@@ -399,7 +407,7 @@ class TransactionPage(QWidget):
             is_out = tx_type_upper == 'OUT'
             # 修改 3: 检查是否是任何冲销类型
             is_reversal = tx_type_upper.startswith('REVERSAL')
-            
+            cabinet_val = tx.get('cabinet', '') 
             # 填充表格行（新列顺序：数量(4) 移到 型号(3) 后面）
             # 新顺序: ID(0), 日期/时间(1), 物品名称(2), 物品型号/规格(3), 物品数量(4), 储存位置(5), 专业(6), 物品类型(7), 接收人/来源(8), 出库项目(9)
             # 原始数据键索引: 'id', 'date', 'item_name', 'item_ref', 'location', 'domain', 'type', 'quantity', 'recipient_source', 'project_ref'
@@ -411,10 +419,11 @@ class TransactionPage(QWidget):
             self.transaction_table.setItem(row_index, 4, QTableWidgetItem(str(tx['quantity']))) # <--- 数量移到第 4 列
             
             self.transaction_table.setItem(row_index, 5, QTableWidgetItem(tx['location'])) # <--- 储存位置移到第 5 列
-            self.transaction_table.setItem(row_index, 6, QTableWidgetItem(tx.get('domain', '')))  # <--- 专业移到第 6 列
-            self.transaction_table.setItem(row_index, 7, QTableWidgetItem(tx['type'])) # <--- 类型移到第 7 列
-            self.transaction_table.setItem(row_index, 8, QTableWidgetItem(tx['recipient_source'])) # <--- 接收人/来源移到第 8 列
-            self.transaction_table.setItem(row_index, 9, QTableWidgetItem(tx['project_ref'])) # <--- 项目移到第 9 列
+            self.transaction_table.setItem(row_index, 6, QTableWidgetItem(cabinet_val))
+            self.transaction_table.setItem(row_index, 7, QTableWidgetItem(tx.get('domain', '')))  # <--- 专业移到第 6 列
+            self.transaction_table.setItem(row_index, 8, QTableWidgetItem(tx['type'])) # <--- 类型移到第 7 列
+            self.transaction_table.setItem(row_index, 9, QTableWidgetItem(tx['recipient_source'])) # <--- 接收人/来源移到第 8 列
+            self.transaction_table.setItem(row_index, 10, QTableWidgetItem(tx['project_ref'])) # <--- 项目移到第 9 列
             
             # 设置行颜色
             if is_reversal:
@@ -592,11 +601,11 @@ class TransactionPage(QWidget):
         # 保持导出顺序与表格顺序一致
         csv_headers = [
             "日期/时间", "物品名称", "物品型号", "数量", 
-            "储存位置", "专业", "类型", "接收人/柜号", "项目"
+            "储存位置", "柜号", "专业", "类型", "接收人/柜号", "项目"
         ]
         data_keys = [
             'date', 'item_name', 'item_ref', 'quantity', 
-            'location', 'domain', 'type', 'recipient_source', 'project_ref'
+            'location', 'cabinet','domain', 'type', 'recipient_source', 'project_ref'
         ]
         
         # 写入文件

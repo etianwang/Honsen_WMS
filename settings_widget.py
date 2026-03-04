@@ -373,7 +373,7 @@ class DataManagementPage(QWidget):
             # 假设 db_manager.get_inventory_for_export 能够正确获取 domain 字段
             data = db_manager.get_inventory_for_export(self.db_path)
             # 保持 headers 不变，因为这是导出 inventory 数据的结构，与 config 表结构无关
-            headers = ["name", "reference", "category", "domain", "unit", "current_stock", "min_stock", "location"] 
+            headers = ["name", "reference", "category", "domain", "unit", "current_stock", "min_stock", "location" , "cabinet"  ] 
             
             if data_utility.export_to_csv(data, filepath, headers):
                 QMessageBox.information(self, "导出成功", f"库存清单已成功导出到:\n{filepath}")
