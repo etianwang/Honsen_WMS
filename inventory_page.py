@@ -212,24 +212,93 @@ class InventoryPage(QWidget):
         self.location_filter_combo.blockSignals(False)
 
 
+    # def _populate_table(self, data):
+    #     """填充表格数据 - 【性能优化版】"""
+    #     print(f"⚙️ [Render] 准备渲染 {len(data)} 行数据...")
+        
+    #     # 🔥【关键优化 1】暂停界面重绘，防止每填一个格子就刷新一次
+    #     self.Inventory_table.setUpdatesEnabled(False)
+    #     self.Inventory_table.setSortingEnabled(False) # 暂时关闭排序
+        
+    #     try:
+    #         self.Inventory_table.setRowCount(len(data))
+            
+    #         # 定义颜色常量
+    #         critical_color = QColor(255, 179, 179)
+    #         warning_color = QColor(255, 240, 192)
+    #         default_color = QColor(255, 255, 255)
+            
+    #         for row_index, item in enumerate(data):
+    #             # 检查库存预警状态
+    #             current = item['current_stock']
+    #             minimum = item['min_stock']
+    #             status_text = "正常"
+    #             color = default_color
+                
+    #             if current <= 0:
+    #                 status_text = "缺货"
+    #                 color = critical_color
+    #             elif current <= minimum:
+    #                 status_text = "预警"
+    #                 color = warning_color
+                
+    #             # 填充数据 (此时界面不会重绘，速度极快)
+    #             # 为了代码简洁，可以使用循环或逐个设置，这里保持逐个设置以便调试
+    #             self.Inventory_table.setItem(row_index, 0, QTableWidgetItem(str(item['id'])))
+    #             self.Inventory_table.setItem(row_index, 1, QTableWidgetItem(item['name']))
+    #             self.Inventory_table.setItem(row_index, 2, QTableWidgetItem(item['reference']))
+    #             self.Inventory_table.setItem(row_index, 3, QTableWidgetItem(item.get('category', '其他')))
+    #             self.Inventory_table.setItem(row_index, 4, QTableWidgetItem(item.get('domain', '其他')))
+    #             self.Inventory_table.setItem(row_index, 5, QTableWidgetItem(item['unit']))
+    #             self.Inventory_table.setItem(row_index, 6, QTableWidgetItem(str(current)))
+    #             self.Inventory_table.setItem(row_index, 7, QTableWidgetItem(str(minimum)))
+    #             self.Inventory_table.setItem(row_index, 8, QTableWidgetItem(item['location']))
+                
+    #             cabinet = item.get('cabinet', '')
+    #             self.Inventory_table.setItem(row_index, 9, QTableWidgetItem(cabinet))
+    #             self.Inventory_table.setItem(row_index, 10, QTableWidgetItem(status_text))
+                
+    #             # 🔥【关键优化 2】批量设置背景色
+    #             # 注意：setBackground 依然需要逐个调用，但在 setUpdatesEnabled(False) 下非常快
+    #             for col in range(self.Inventory_table.columnCount()):
+    #                 cell_item = self.Inventory_table.item(row_index, col)
+    #                 if cell_item:
+    #                     cell_item.setBackground(color)
+                
+    #             # 隐藏 ID 列 (只需设置一次，放在循环外更好，但放在里面也没事，因为被暂停了)
+    #             if row_index == 0:
+    #                 self.Inventory_table.setColumnHidden(0, True)
+
+    #         # 更新状态栏
+    #         self.update_status_label()
+            
+    #         print("🎉 [Render] 数据填充完成，正在恢复重绘...")
+            
+    #     finally:
+    #         # 🔥【关键优化 3】恢复界面重绘，此时界面会瞬间“刷”出来
+    #         self.Inventory_table.setUpdatesEnabled(True)
+    #         self.Inventory_table.setSortingEnabled(True)
+    #         # 强制刷新一次视图，确保显示最新状态
+    #         self.Inventory_table.viewport().update()
+
     def _populate_table(self, data):
-        """填充表格数据 - 【性能优化版】"""
+        """填充表格数据 - 【视觉优化版：突出显示地点和柜号】"""
         print(f"⚙️ [Render] 准备渲染 {len(data)} 行数据...")
         
-        # 🔥【关键优化 1】暂停界面重绘，防止每填一个格子就刷新一次
+        # 🔥【关键优化 1】暂停界面重绘
         self.Inventory_table.setUpdatesEnabled(False)
-        self.Inventory_table.setSortingEnabled(False) # 暂时关闭排序
+        self.Inventory_table.setSortingEnabled(False)
         
         try:
             self.Inventory_table.setRowCount(len(data))
             
             # 定义颜色常量
-            critical_color = QColor(255, 179, 179)
-            warning_color = QColor(255, 240, 192)
-            default_color = QColor(255, 255, 255)
+            critical_color = QColor(255, 179, 179) # 缺货红
+            warning_color = QColor(255, 240, 192)  # 预警黄
+            default_color = QColor(255, 255, 255)  # 正常白
             
             for row_index, item in enumerate(data):
-                # 检查库存预警状态
+                # 1. 计算库存状态和颜色
                 current = item['current_stock']
                 minimum = item['min_stock']
                 status_text = "正常"
@@ -242,45 +311,62 @@ class InventoryPage(QWidget):
                     status_text = "预警"
                     color = warning_color
                 
-                # 填充数据 (此时界面不会重绘，速度极快)
-                # 为了代码简洁，可以使用循环或逐个设置，这里保持逐个设置以便调试
+                # 2. 【核心修改】构建智能显示名称
+                # 格式：名称 + [地点] + (柜号)
+                name = item['name']
+                location = item.get('location', '')
+                cabinet = item.get('cabinet', '')
+                
+                display_name = name
+                if location:
+                    display_name += f" 📍[{location}]"
+                if cabinet:
+                    display_name += f" 🗄️({cabinet})"
+                
+                # 3. 填充数据
+                # 第 1 列：名称 (使用智能显示名称)
+                name_item = QTableWidgetItem(display_name)
+                name_item.setToolTip(f"原始名称: {name}\n地点: {location}\n柜号: {cabinet}\n型号: {item.get('reference', '')}")
+                self.Inventory_table.setItem(row_index, 1, name_item)
+                
+                # 其他列保持原样
                 self.Inventory_table.setItem(row_index, 0, QTableWidgetItem(str(item['id'])))
-                self.Inventory_table.setItem(row_index, 1, QTableWidgetItem(item['name']))
                 self.Inventory_table.setItem(row_index, 2, QTableWidgetItem(item['reference']))
                 self.Inventory_table.setItem(row_index, 3, QTableWidgetItem(item.get('category', '其他')))
                 self.Inventory_table.setItem(row_index, 4, QTableWidgetItem(item.get('domain', '其他')))
                 self.Inventory_table.setItem(row_index, 5, QTableWidgetItem(item['unit']))
                 self.Inventory_table.setItem(row_index, 6, QTableWidgetItem(str(current)))
                 self.Inventory_table.setItem(row_index, 7, QTableWidgetItem(str(minimum)))
-                self.Inventory_table.setItem(row_index, 8, QTableWidgetItem(item['location']))
                 
-                cabinet = item.get('cabinet', '')
+                # 第 8 列：地点 (单独保留一列，方便筛选)
+                loc_item = QTableWidgetItem(location)
+                loc_item.setToolTip(f"完整位置: {location} - {cabinet}")
+                self.Inventory_table.setItem(row_index, 8, loc_item)
+                
+                # 第 9 列：柜号
                 self.Inventory_table.setItem(row_index, 9, QTableWidgetItem(cabinet))
+                
+                # 第 10 列：状态
                 self.Inventory_table.setItem(row_index, 10, QTableWidgetItem(status_text))
                 
-                # 🔥【关键优化 2】批量设置背景色
-                # 注意：setBackground 依然需要逐个调用，但在 setUpdatesEnabled(False) 下非常快
+                # 4. 批量设置背景色
                 for col in range(self.Inventory_table.columnCount()):
                     cell_item = self.Inventory_table.item(row_index, col)
                     if cell_item:
                         cell_item.setBackground(color)
                 
-                # 隐藏 ID 列 (只需设置一次，放在循环外更好，但放在里面也没事，因为被暂停了)
+                # 隐藏 ID 列 (只在第一行执行一次判断即可，但在循环内也无妨，因为被暂停了)
                 if row_index == 0:
                     self.Inventory_table.setColumnHidden(0, True)
 
-            # 更新状态栏
             self.update_status_label()
-            
-            print("🎉 [Render] 数据填充完成，正在恢复重绘...")
+            print("🎉 [Render] 数据填充完成。")
             
         finally:
-            # 🔥【关键优化 3】恢复界面重绘，此时界面会瞬间“刷”出来
+            # 🔥【关键优化 3】恢复界面重绘
             self.Inventory_table.setUpdatesEnabled(True)
             self.Inventory_table.setSortingEnabled(True)
-            # 强制刷新一次视图，确保显示最新状态
             self.Inventory_table.viewport().update()
-
 
     def refresh_data(self):
         """刷新按钮的处理函数：重新从数据库加载数据"""
@@ -298,7 +384,6 @@ class InventoryPage(QWidget):
         else:
             self.status_label.setText(f"总计 {total_count} 条记录。")
 
-
     def filter_data(self):
         """根据搜索框和筛选下拉框内容过滤表格行"""
         search_text = self.search_input.text().lower().strip()
@@ -309,41 +394,40 @@ class InventoryPage(QWidget):
         visible_count = 0
         
         for i in range(self.Inventory_table.rowCount()):
+            # 获取表格中的数据项
             name_item = self.Inventory_table.item(i, 1)
             ref_item = self.Inventory_table.item(i, 2)
             category_item = self.Inventory_table.item(i, 3)
             domain_item = self.Inventory_table.item(i, 4)
-            location_item = self.Inventory_table.item(i, 8)
+            location_item = self.Inventory_table.item(i, 8) # 地点列
             
+            # 获取原始数据 (用于获取准确的 cabinet)
             item_data = self.all_data[i] if i < len(self.all_data) else {}
-            
-            # 【修改】只获取合并后的柜号
             cabinet = item_data.get('cabinet', '').lower()
+            location_raw = item_data.get('location', '').lower() # 获取原始地点用于搜索
 
             hide = False
             
-            # 搜索框筛选
+            # --- 搜索框筛选逻辑 ---
             if search_text:
                 name_match = name_item and search_text in name_item.text().lower()
                 ref_match = ref_item and search_text in ref_item.text().lower()
-                 
-                # 【修改】只匹配当前柜号
                 cabinet_match = search_text in cabinet
+                location_match = search_text in location_raw # 【新增】支持搜地点
 
-                if not (name_match or ref_match or cabinet_match):
+                # 只要有一个匹配就不隐藏
+                if not (name_match or ref_match or cabinet_match or location_match):
                     hide = True
             
-            # 类别筛选
+            # --- 下拉框筛选逻辑 (保持不变) ---
             if not hide and category_filter != "ALL":
                 if not category_item or category_item.text() != category_filter:
                     hide = True
             
-            # 专业筛选
             if not hide and domain_filter != "ALL":
                 if not domain_item or domain_item.text() != domain_filter:
                     hide = True
             
-            # 储存位置筛选
             if not hide and location_filter != "ALL":
                 if not location_item or location_item.text() != location_filter:
                     hide = True
@@ -353,12 +437,73 @@ class InventoryPage(QWidget):
             if not hide:
                 visible_count += 1
         
-        # 更新状态栏显示筛选结果
+        # 更新状态栏
         total_count = self.Inventory_table.rowCount()
         if visible_count < total_count:
             self.status_label.setText(f"筛选结果：显示 {visible_count} / {total_count} 条记录。")
         else:
             self.status_label.setText(f"总计 {total_count} 条记录。")
+            
+    # def filter_data(self):
+    #     """根据搜索框和筛选下拉框内容过滤表格行"""
+    #     search_text = self.search_input.text().lower().strip()
+    #     category_filter = self.category_filter_combo.currentText()
+    #     domain_filter = self.domain_filter_combo.currentText()
+    #     location_filter = self.location_filter_combo.currentText()
+        
+    #     visible_count = 0
+        
+    #     for i in range(self.Inventory_table.rowCount()):
+    #         name_item = self.Inventory_table.item(i, 1)
+    #         ref_item = self.Inventory_table.item(i, 2)
+    #         category_item = self.Inventory_table.item(i, 3)
+    #         domain_item = self.Inventory_table.item(i, 4)
+    #         location_item = self.Inventory_table.item(i, 8)
+            
+    #         item_data = self.all_data[i] if i < len(self.all_data) else {}
+            
+    #         # 【修改】只获取合并后的柜号
+    #         cabinet = item_data.get('cabinet', '').lower()
+
+    #         hide = False
+            
+    #         # 搜索框筛选
+    #         if search_text:
+    #             name_match = name_item and search_text in name_item.text().lower()
+    #             ref_match = ref_item and search_text in ref_item.text().lower()
+                 
+    #             # 【修改】只匹配当前柜号
+    #             cabinet_match = search_text in cabinet
+
+    #             if not (name_match or ref_match or cabinet_match):
+    #                 hide = True
+            
+    #         # 类别筛选
+    #         if not hide and category_filter != "ALL":
+    #             if not category_item or category_item.text() != category_filter:
+    #                 hide = True
+            
+    #         # 专业筛选
+    #         if not hide and domain_filter != "ALL":
+    #             if not domain_item or domain_item.text() != domain_filter:
+    #                 hide = True
+            
+    #         # 储存位置筛选
+    #         if not hide and location_filter != "ALL":
+    #             if not location_item or location_item.text() != location_filter:
+    #                 hide = True
+            
+    #         self.Inventory_table.setRowHidden(i, hide)
+            
+    #         if not hide:
+    #             visible_count += 1
+        
+    #     # 更新状态栏显示筛选结果
+    #     total_count = self.Inventory_table.rowCount()
+    #     if visible_count < total_count:
+    #         self.status_label.setText(f"筛选结果：显示 {visible_count} / {total_count} 条记录。")
+    #     else:
+    #         self.status_label.setText(f"总计 {total_count} 条记录。")
             
         
     def add_item_dialog(self):
