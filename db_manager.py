@@ -519,12 +519,13 @@ def get_transactions_for_export(db_path: str) -> List[Dict[str, Union[int, str]]
 # --- 用于批量导入的数据库方法 ---
 def batch_import_Inventory(db_path: str, items: List[Dict]) -> Dict[str, int]:
     """
-    【最终增强版】批量导入或更新库存物品。
+    【修复版】批量导入或更新库存物品。
     
-    核心逻辑变更：
-    1. 预处理：自动合并 CSV 中完全重复的行 (Reference + Location + Cabinet 相同)。
-       - 策略：current_stock 累加，其他文本字段取最后一行的值。
-    2. 入库：根据合并后的数据，执行 "存在则更新，不存在则插入"。
+    核心逻辑修复：
+    1. 判重键变更：从 (ref, loc, cab) 改为 (name, ref, loc, cab)。
+       - 确保“同名同型号同位置同柜号”才会触发更新。
+       - “同型号但不同名”会被视为新物品进行插入。
+    2. 预处理：自动合并 CSV 中完全重复的行。
     
     :return: 包含操作统计的字典 {'inserted': int, 'updated': int, 'failed': int, 'merged_rows': int}
     """
@@ -536,23 +537,23 @@ def batch_import_Inventory(db_path: str, items: List[Dict]) -> Dict[str, int]:
     
     try:
         # --- 第一步：数据预处理 (合并重复项) ---
-        # 使用字典来暂存合并后的数据，Key 为 (reference, location, cabinet)
+        # 【修复】Key 必须包含 name
         merged_data = {}
         
         for item in items:
             try:
-                # 提取关键指纹
+                name = str(item.get('name', '')).strip()
                 ref = str(item.get('reference', '')).strip()
                 loc = str(item.get('location', '其他')).strip()
                 cab = str(item.get('cabinet', '')).strip()
                 
-                if not ref:
+                if not ref or not name:
                     stats['failed'] += 1
                     continue
                 
-                key = (ref, loc, cab)
+                # 【关键修复】Key 包含 name
+                key = (name, ref, loc, cab)
                 
-                # 提取数值和文本
                 try:
                     stock_val = int(item.get('current_stock', 0))
                 except ValueError:
@@ -564,9 +565,8 @@ def batch_import_Inventory(db_path: str, items: List[Dict]) -> Dict[str, int]:
                 except ValueError:
                     pass
 
-                # 构建当前行数据快照
                 current_row = {
-                    'name': item.get('name', ''),
+                    'name': name,
                     'category': item.get('category', '其他'),
                     'domain': item.get('domain', '其他'),
                     'unit': item.get('unit', ''),
@@ -575,26 +575,20 @@ def batch_import_Inventory(db_path: str, items: List[Dict]) -> Dict[str, int]:
                 }
 
                 if key in merged_data:
-                    # 如果已存在，累加库存，其他字段覆盖为最新值
                     existing = merged_data[key]
                     existing['stock'] += stock_val
-                    # 更新其他字段为当前行的值 (假设后面的行是修正过的)
-                    existing['name'] = current_row['name']
                     existing['category'] = current_row['category']
                     existing['domain'] = current_row['domain']
                     existing['unit'] = current_row['unit']
                     existing['min_stock'] = current_row['min_stock']
-                    
-                    stats['merged_rows'] += 1 # 记录合并了多少行
+                    stats['merged_rows'] += 1
                 else:
-                    # 如果是新键，直接存入
                     merged_data[key] = current_row
                     
             except Exception as e:
-                print(f"⚠️ 预处理行失败: {e}")
+                print(f"⚠️ 预处理行失败：{e}")
                 stats['failed'] += 1
 
-        # 如果合并后没有有效数据，直接返回
         if not merged_data:
             return stats
 
@@ -607,53 +601,51 @@ def batch_import_Inventory(db_path: str, items: List[Dict]) -> Dict[str, int]:
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         
+        # 【修复】UPDATE 的 WHERE 条件必须包含 name
         update_sql = """
             UPDATE Inventory 
-            SET name=?, category=?, domain=?, unit=?, min_stock=?, current_stock=?
-            WHERE reference=? AND location=? AND cabinet=?
+            SET category=?, domain=?, unit=?, min_stock=?, current_stock=?
+            WHERE name=? AND reference=? AND location=? AND cabinet=?
         """
         
+        # 【修复】CHECK 的 WHERE 条件必须包含 name
         check_sql = """
             SELECT id, current_stock FROM Inventory 
-            WHERE reference=? AND location=? AND cabinet=?
+            WHERE name=? AND reference=? AND location=? AND cabinet=?
         """
 
-        # 遍历合并后的数据进行入库
-        for (ref, loc, cab), data in merged_data.items():
+        for (name, ref, loc, cab), data in merged_data.items():
             try:
-                # 检查数据库中是否存在
-                cursor.execute(check_sql, (ref, loc, cab))
+                # 检查数据库中是否存在完全匹配的记录 (Name + Ref + Loc + Cab)
+                cursor.execute(check_sql, (name, ref, loc, cab))
                 row = cursor.fetchone()
 
                 if row:
                     # 【存在】-> 更新
-                    # 注意：这里是覆盖库存还是累加？
-                    # 通常导入被视为"盘点"或"设置目标值"，所以这里采用【覆盖】策略。
-                    # 如果你希望导入也是"累加"到数据库现有库存上，请改为: row[1] + data['stock']
-                    final_stock = data['stock'] 
+                    final_stock = data['stock']
                     
                     cursor.execute(
                         update_sql, 
-                        (data['name'], data['category'], data['domain'], data['unit'], 
-                         data['min_stock'], final_stock, ref, loc, cab)
+                        (data['category'], data['domain'], data['unit'], 
+                         data['min_stock'], final_stock, 
+                         name, ref, loc, cab) # 注意参数顺序对应 WHERE 子句
                     )
                     stats['updated'] += 1
                 else:
-                    # 【不存在】-> 插入
+                    # 【不存在】-> 插入 (即使 Ref/Loc/Cab 相同，只要 Name 不同，就是新记录)
                     cursor.execute(
                         insert_sql, 
-                        (data['name'], ref, data['category'], data['domain'], data['unit'], 
+                        (name, ref, data['category'], data['domain'], data['unit'], 
                          data['stock'], data['min_stock'], loc, cab)
                     )
                     stats['inserted'] += 1
 
             except Exception as e:
-                print(f"❌ 数据库操作失败 (Ref: {ref}, Loc: {loc}): {e}")
+                print(f"❌ 数据库操作失败 (Name: {name}, Ref: {ref}): {e}")
                 stats['failed'] += 1
         
         conn.commit()
         
-        # 打印详细统计
         msg = f"📊 导入完成 | 新增: {stats['inserted']}, 更新: {stats['updated']}"
         if stats['merged_rows'] > 0:
             msg += f", CSV中自动合并重复行: {stats['merged_rows']} 条"
@@ -663,7 +655,7 @@ def batch_import_Inventory(db_path: str, items: List[Dict]) -> Dict[str, int]:
         
     except sqlite3.Error as e:
         if conn: conn.rollback()
-        print(f"💥 批量导入致命错误: {e}")
+        print(f"💥 批量导入致命错误：{e}")
         stats['failed'] += len(items)
     finally:
         if conn: conn.close()
