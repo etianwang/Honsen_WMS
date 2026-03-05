@@ -136,7 +136,7 @@ def initialize_all_schema(conn):
             CREATE TABLE Inventory (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
-                reference TEXT UNIQUE,
+                reference TEXT NOT NULL,
                 category TEXT,
                 domain TEXT,
                 unit TEXT,

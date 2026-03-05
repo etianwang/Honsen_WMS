@@ -193,9 +193,41 @@ def import_from_csv(filepath: str) -> List[Dict[str, Union[str, int]]]:
     return items
 
 
+# def validate_inventory_data(items: List[Dict]) -> tuple[List[Dict], List[str]]:
+#     """
+#     验证导入的库存数据，返回有效数据和错误信息列表。
+    
+#     :param items: 待验证的物品列表
+#     :return: (有效物品列表, 错误信息列表)
+#     """
+#     valid_items = []
+#     errors = []
+    
+#     seen_references = set()
+#     seen_names = set()
+    
+#     for idx, item in enumerate(items, 1):
+#         # 检查重复的参考编号
+#         if item['reference'] in seen_references:
+#             errors.append(f"第 {idx} 项: 参考编号 '{item['reference']}' 重复")
+#             continue
+        
+#         # 检查重复的名称
+#         if item['name'] in seen_names:
+#             errors.append(f"第 {idx} 项: 名称 '{item['name']}' 重复")
+#             continue
+        
+#         seen_references.add(item['reference'])
+#         seen_names.add(item['name'])
+#         valid_items.append(item)
+    
+#     return valid_items, errors
+
 def validate_inventory_data(items: List[Dict]) -> tuple[List[Dict], List[str]]:
     """
-    验证导入的库存数据，返回有效数据和错误信息列表。
+    验证导入的库存数据。
+    【已修改】移除了 name 和 reference 的唯一性检查，允许重复数据导入。
+    现在仅检查必需字段是否存在且非空。
     
     :param items: 待验证的物品列表
     :return: (有效物品列表, 错误信息列表)
@@ -203,22 +235,34 @@ def validate_inventory_data(items: List[Dict]) -> tuple[List[Dict], List[str]]:
     valid_items = []
     errors = []
     
-    seen_references = set()
-    seen_names = set()
+    # 定义必需字段
+    required_fields = ['name', 'reference', 'unit', 'min_stock', 'location']
     
     for idx, item in enumerate(items, 1):
-        # 检查重复的参考编号
-        if item['reference'] in seen_references:
-            errors.append(f"第 {idx} 项: 参考编号 '{item['reference']}' 重复")
+        has_error = False
+        
+        # 1. 检查必需字段是否缺失或为空
+        for field in required_fields:
+            value = item.get(field, '')
+            if value is None or str(value).strip() == '':
+                errors.append(f"第 {idx} 项: 缺少必需字段 '{field}' 或值为空")
+                has_error = True
+                break
+        
+        if has_error:
+            continue
+            
+        # 2. (可选) 检查数字字段格式
+        try:
+            int(item.get('min_stock', 0))
+            # current_stock 如果存在也检查一下
+            if 'current_stock' in item:
+                int(item.get('current_stock', 0))
+        except ValueError:
+            errors.append(f"第 {idx} 项: 'min_stock' 或 'current_stock' 必须是数字")
             continue
         
-        # 检查重复的名称
-        if item['name'] in seen_names:
-            errors.append(f"第 {idx} 项: 名称 '{item['name']}' 重复")
-            continue
-        
-        seen_references.add(item['reference'])
-        seen_names.add(item['name'])
+        # 3. 如果没有错误，加入有效列表
         valid_items.append(item)
     
     return valid_items, errors

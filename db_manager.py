@@ -60,8 +60,8 @@ def initialize_database(db_path: str):
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS Inventory (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                reference TEXT UNIQUE,
+                name TEXT NOT NULL ,
+                reference TEXT NOT NULL,
                 category TEXT,
                 domain TEXT,
                 unit TEXT,
