@@ -278,40 +278,101 @@ def delete_config_option(db_path: str, category: str, value: str) -> bool:
             conn.close()
             
 # --- Inventory CRUD 操作 ---
-
-def insert_Inventory_item(
-    db_path: str, 
-    name: str, 
-    reference: str, 
-    category: str,
-    domain: str,
-    unit: str, 
-    current_stock: int, 
-    min_stock: int, 
-    location: str,
-    cabinet: str = ""  # 【新增】添加 cabinet 参数
-) -> Optional[int]:
-    """插入新的库存物品。"""
+def insert_Inventory_item(db_path: str, name: str, reference: str, category: str, 
+                          domain: str, unit: str, current_stock: int, min_stock: int, 
+                          location: str, cabinet: str) -> Optional[int]:
+    """
+    【更新版】插入新的库存物品。
+    
+    唯一性约束变更：
+    不再强制 'reference' 全局唯一。
+    现在的唯一性约束为组合键：(name, reference, location, cabinet)。
+    即：同一型号可以在不同地点或不同柜子存在，但不能在同一地点的同一柜子下重复添加同名同型号物品。
+    
+    :return: 成功返回新行的 rowid，如果违反唯一性约束返回 None。
+    """
     conn = None
     try:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO Inventory (name, reference, category, domain, unit, current_stock, min_stock, location, cabinet) 
+        
+        # 1. 检查组合唯一性 (Name + Ref + Location + Cabinet)
+        check_sql = """
+            SELECT id FROM Inventory 
+            WHERE name=? AND reference=? AND location=? AND cabinet=?
+        """
+        # 注意：这里假设输入的空字符串 "" 和数据库中的 "" 匹配。
+        # 如果业务逻辑中 "空柜子" 和 "未填写柜子" 需要特殊处理，需在此处标准化数据。
+        
+        cursor.execute(check_sql, (name.strip(), reference.strip(), location.strip(), cabinet.strip()))
+        if cursor.fetchone():
+            # 发现重复
+            print(f"⚠️ 插入失败：检测到重复记录 -> 名称:{name}, 型号:{reference}, 地点:{location}, 柜号:{cabinet}")
+            return None
+        
+        # 2. 执行插入
+        insert_sql = """
+            INSERT INTO Inventory (name, reference, category, domain, unit, current_stock, min_stock, location, cabinet)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (name, reference, category, domain, unit, current_stock, min_stock, location, cabinet))
+        """
+        cursor.execute(insert_sql, (
+            name.strip(), 
+            reference.strip(), 
+            category.strip(), 
+            domain.strip(), 
+            unit.strip(), 
+            current_stock, 
+            min_stock, 
+            location.strip(), 
+            cabinet.strip()
+        ))
+        
         conn.commit()
-        return cursor.lastrowid
-    except sqlite3.IntegrityError:
-        # print("错误：名称或参考编号已存在。")
-        return None 
+        new_id = cursor.lastrowid
+        print(f"✅ 成功插入新物品 (ID: {new_id}): {name} @ {location}-{cabinet}")
+        return new_id
+        
     except sqlite3.Error as e:
-        print(f"数据库错误：插入物品失败：{e}")
+        print(f"💥 数据库插入错误: {e}")
+        if conn:
+            conn.rollback()
         return None
     finally:
         if conn:
             conn.close()
-            time.sleep(0.4)
+# def insert_Inventory_item(
+#     db_path: str, 
+#     name: str, 
+#     reference: str, 
+#     category: str,
+#     domain: str,
+#     unit: str, 
+#     current_stock: int, 
+#     min_stock: int, 
+#     location: str,
+#     cabinet: str = ""  # 【新增】添加 cabinet 参数
+# ) -> Optional[int]:
+#     """插入新的库存物品。"""
+#     conn = None
+#     try:
+#         conn = sqlite3.connect(db_path)
+#         cursor = conn.cursor()
+#         cursor.execute("""
+#             INSERT INTO Inventory (name, reference, category, domain, unit, current_stock, min_stock, location, cabinet) 
+#             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+#         """, (name, reference, category, domain, unit, current_stock, min_stock, location, cabinet))
+#         conn.commit()
+#         return cursor.lastrowid
+#     except sqlite3.IntegrityError:
+#         # print("错误：名称或参考编号已存在。")
+#         return None 
+#     except sqlite3.Error as e:
+#         print(f"数据库错误：插入物品失败：{e}")
+#         return None
+#     finally:
+#         if conn:
+#             conn.close()
+#             time.sleep(0.4)
 
 def update_Inventory_item(
     db_path: str, 

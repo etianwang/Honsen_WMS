@@ -144,28 +144,40 @@ class AddItemDialog(QDialog):
                 name=data['name'].strip(),
                 reference=data['reference'].strip(),
                 category=data['category'].strip(),
-                domain=data['domain'].strip(),  # 新增
+                domain=data['domain'].strip(),
                 unit=data['unit'].strip(),
                 current_stock=data['current_stock'], 
                 min_stock=data['min_stock'], 
                 location=data['location'].strip(),
-                cabinet=data['cabinet'].strip() # 【新增】传递初始柜号
+                cabinet=data['cabinet'].strip()
             )
             
             if new_id is not None:
                 QMessageBox.information(self, "成功", f"物品 '{data['name']}' (ID: {new_id}) 添加成功！")
                 super().accept()
             else:
-                QMessageBox.critical(self, "操作失败", f"添加物品失败！物品名称或型号 '{data['reference']}' 可能已存在。")
+                # 【修改点】更新错误提示，明确说明是唯一性组合冲突
+                msg = (
+                    f"<b>添加失败！检测到重复记录。</b><br><br>"
+                    f"系统中已存在以下完全匹配的物品：<br>"
+                    f"📦 <b>名称:</b> {data['name']}<br>"
+                    f"🏷️ <b>型号:</b> {data['reference']}<br>"
+                    f"📍 <b>位置:</b> {data['location']}<br>"
+                    f"🗄️ <b>柜号:</b> {data['cabinet']}<br><br>"
+                    f"提示：同一型号可以存在于<b>不同地点</b>或<b>不同柜子</b>，<br>"
+                    f"但不能在<b>同一地点的同一柜子</b>下重复添加。"
+                )
+                QMessageBox.warning(self, "唯一性约束冲突", msg)
                 return
         
         except TypeError as e:
             QMessageBox.critical(self, "数据库管理器错误", 
-                                 f"添加物品失败！错误：{e}\n请确保 db_manager.py 中的 insert_inventory_item 函数已更新以接受 'domain' 参数。")
+                                 f"添加物品失败！错误：{e}\n请确保 db_manager.py 已更新。")
         except Exception as e:
             QMessageBox.critical(self, "操作失败", f"添加物品失败！发生未知错误：{e}")
             return
-            
+        
+        
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     print("请确保 db_manager.py 存在且已更新以支持 cabinet 字段后再运行。")
