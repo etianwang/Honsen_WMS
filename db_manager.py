@@ -742,8 +742,21 @@ def get_transactions_history(
         # 3. 物品名称或编号筛选
         if item_search:
             search_pattern = f'%{item_search}%'
-            query += " AND (UPPER(i.name) LIKE UPPER(?) OR UPPER(i.reference) LIKE UPPER(?))"
-            params.extend([search_pattern, search_pattern])
+            # query += " AND (UPPER(i.name) LIKE UPPER(?) OR UPPER(i.reference) LIKE UPPER(?))"
+            # params.extend([search_pattern, search_pattern])
+            # 扩展搜索范围：增加 i.cabinet (柜号) 和 t.recipient_source (接收人/来源)
+            query += """
+                AND (
+                    UPPER(i.name) LIKE UPPER(?) 
+                    OR UPPER(i.reference) LIKE UPPER(?) 
+                    OR UPPER(i.cabinet) LIKE UPPER(?) 
+                    OR UPPER(t.recipient_source) LIKE UPPER(?)
+                )
+            """
+            # 需要传入 4 次相同的搜索参数
+            params.extend([search_pattern, search_pattern, search_pattern, search_pattern])
+
+
 
         # 4. 类别筛选
         if category:
