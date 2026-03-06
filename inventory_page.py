@@ -117,11 +117,13 @@ class InventoryPage(QWidget):
         self.Inventory_table.setHorizontalHeaderLabels(self.headers)
         
         # 调整列宽
-        self.Inventory_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        self.Inventory_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        
+        # self.Inventory_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        # self.Inventory_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header = self.Inventory_table.horizontalHeader()
         main_layout.addWidget(self.Inventory_table)
-        
+        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        self.Inventory_table.setColumnWidth(1, 300) 
         # 底部状态栏
         self.status_label = QLabel("总计 0 条记录。")
         self.status_label.setStyleSheet("padding: 5px; font-weight: bold;")
