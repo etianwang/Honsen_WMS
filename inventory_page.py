@@ -213,79 +213,8 @@ class InventoryPage(QWidget):
             self.location_filter_combo.setCurrentIndex(loc_index)
         self.location_filter_combo.blockSignals(False)
 
-
-    # def _populate_table(self, data):
-    #     """填充表格数据 - 【性能优化版】"""
-    #     print(f"⚙️ [Render] 准备渲染 {len(data)} 行数据...")
-        
-    #     # 🔥【关键优化 1】暂停界面重绘，防止每填一个格子就刷新一次
-    #     self.Inventory_table.setUpdatesEnabled(False)
-    #     self.Inventory_table.setSortingEnabled(False) # 暂时关闭排序
-        
-    #     try:
-    #         self.Inventory_table.setRowCount(len(data))
-            
-    #         # 定义颜色常量
-    #         critical_color = QColor(255, 179, 179)
-    #         warning_color = QColor(255, 240, 192)
-    #         default_color = QColor(255, 255, 255)
-            
-    #         for row_index, item in enumerate(data):
-    #             # 检查库存预警状态
-    #             current = item['current_stock']
-    #             minimum = item['min_stock']
-    #             status_text = "正常"
-    #             color = default_color
-                
-    #             if current <= 0:
-    #                 status_text = "缺货"
-    #                 color = critical_color
-    #             elif current <= minimum:
-    #                 status_text = "预警"
-    #                 color = warning_color
-                
-    #             # 填充数据 (此时界面不会重绘，速度极快)
-    #             # 为了代码简洁，可以使用循环或逐个设置，这里保持逐个设置以便调试
-    #             self.Inventory_table.setItem(row_index, 0, QTableWidgetItem(str(item['id'])))
-    #             self.Inventory_table.setItem(row_index, 1, QTableWidgetItem(item['name']))
-    #             self.Inventory_table.setItem(row_index, 2, QTableWidgetItem(item['reference']))
-    #             self.Inventory_table.setItem(row_index, 3, QTableWidgetItem(item.get('category', '其他')))
-    #             self.Inventory_table.setItem(row_index, 4, QTableWidgetItem(item.get('domain', '其他')))
-    #             self.Inventory_table.setItem(row_index, 5, QTableWidgetItem(item['unit']))
-    #             self.Inventory_table.setItem(row_index, 6, QTableWidgetItem(str(current)))
-    #             self.Inventory_table.setItem(row_index, 7, QTableWidgetItem(str(minimum)))
-    #             self.Inventory_table.setItem(row_index, 8, QTableWidgetItem(item['location']))
-                
-    #             cabinet = item.get('cabinet', '')
-    #             self.Inventory_table.setItem(row_index, 9, QTableWidgetItem(cabinet))
-    #             self.Inventory_table.setItem(row_index, 10, QTableWidgetItem(status_text))
-                
-    #             # 🔥【关键优化 2】批量设置背景色
-    #             # 注意：setBackground 依然需要逐个调用，但在 setUpdatesEnabled(False) 下非常快
-    #             for col in range(self.Inventory_table.columnCount()):
-    #                 cell_item = self.Inventory_table.item(row_index, col)
-    #                 if cell_item:
-    #                     cell_item.setBackground(color)
-                
-    #             # 隐藏 ID 列 (只需设置一次，放在循环外更好，但放在里面也没事，因为被暂停了)
-    #             if row_index == 0:
-    #                 self.Inventory_table.setColumnHidden(0, True)
-
-    #         # 更新状态栏
-    #         self.update_status_label()
-            
-    #         print("🎉 [Render] 数据填充完成，正在恢复重绘...")
-            
-    #     finally:
-    #         # 🔥【关键优化 3】恢复界面重绘，此时界面会瞬间“刷”出来
-    #         self.Inventory_table.setUpdatesEnabled(True)
-    #         self.Inventory_table.setSortingEnabled(True)
-    #         # 强制刷新一次视图，确保显示最新状态
-    #         self.Inventory_table.viewport().update()
-
-
     def _populate_table(self, data):
-        """填充表格数据 - 【终极增强版：显示同名异型总和及全局分布详情】"""
+        """填充表格数据 - 【增强版：自动为截断文本添加 ToolTip】"""
         print(f"⚙️ [Render] 准备渲染 {len(data)} 行数据...")
         
         # 🔥【关键优化 1】暂停界面重绘
@@ -295,14 +224,8 @@ class InventoryPage(QWidget):
         try:
             self.Inventory_table.setRowCount(len(data))
             
-            # --- 🌟 新增步骤：深度数据聚合分析 ---
-            
-            # 1. 基础聚合：(name, ref) -> {total_stock, locations_set, cabinets_set}
-            # 用于显示当前物品的全局分布
+            # --- 🌟 数据聚合分析 (保持不变，用于生成高级 Tooltip) ---
             global_item_map = {} 
-            
-            # 2. 高级聚合：name -> {ref: stock} 
-            # 用于计算"同名但不同型号"的库存总和
             name_model_map = {} 
 
             for item in data:
@@ -319,35 +242,28 @@ class InventoryPage(QWidget):
                 if not name:
                     continue
 
-                # --- 构建全局物品地图 (Name + Ref) ---
                 key = (name, ref)
                 if key not in global_item_map:
-                    global_item_map[key] = {
-                        'total': 0,
-                        'locations': set(),
-                        'cabinets': set(),
-                        'unit': item.get('unit', '')
-                    }
+                    global_item_map[key] = {'total': 0, 'locations': set(), 'cabinets': set(), 'unit': item.get('unit', '')}
                 
                 global_item_map[key]['total'] += stock
                 global_item_map[key]['locations'].add(loc)
-                global_item_map[key]['cabinets'].add(f"{loc}-{cab}") # 记录完整路径
+                global_item_map[key]['cabinets'].add(f"{loc}-{cab}")
 
-                # --- 构建设备名称模型地图 (Name -> {Ref: Stock}) ---
                 if name not in name_model_map:
                     name_model_map[name] = {}
-                
                 if ref not in name_model_map[name]:
                     name_model_map[name][ref] = 0
                 name_model_map[name][ref] += stock
-            
             # -------------------------------------------------------
 
-            # 定义颜色常量
-            critical_color = QColor(255, 179, 179) # 缺货红
-            warning_color = QColor(255, 240, 192)  # 预警黄
-            default_color = QColor(255, 255, 255)  # 正常白
+            critical_color = QColor(255, 179, 179)
+            warning_color = QColor(255, 240, 192)
+            default_color = QColor(255, 255, 255)
             
+            # 获取字体度量器，用于计算文本像素宽度
+            font_metrics = self.Inventory_table.fontMetrics()
+
             for row_index, item in enumerate(data):
                 # 1. 计算库存状态和颜色
                 current = item['current_stock']
@@ -362,7 +278,7 @@ class InventoryPage(QWidget):
                     status_text = "预警"
                     color = warning_color
                 
-                # 2. 构建智能显示名称
+                # 2. 构建智能显示名称 (用于表格显示)
                 name = item['name']
                 location = item.get('location', '')
                 cabinet = item.get('cabinet', '')
@@ -373,18 +289,16 @@ class InventoryPage(QWidget):
                 if cabinet:
                     display_name += f" 🗄️({cabinet})"
                 
-                # 3. 🌟 构建终极版 ToolTip
+                # 3. 🌟 构建名称列的终极版 ToolTip (保持原有逻辑)
                 ref = item.get('reference', '')
                 unit = item.get('unit', '')
                 key = (name, ref)
                 
-                # 获取当前物品的全局数据
                 current_global = global_item_map.get(key, {'total': 0, 'locations': set(), 'cabinets': set()})
                 total_stock = current_global['total']
                 all_locations = sorted(list(current_global['locations']))
                 all_cabinets = sorted(list(current_global['cabinets']))
                 
-                # 计算"同名不同型号"的总和
                 other_models_stock = 0
                 other_models_info = []
                 if name in name_model_map:
@@ -393,89 +307,122 @@ class InventoryPage(QWidget):
                             other_models_stock += stock_val
                             other_models_info.append(f"{other_ref}: {stock_val}")
                 
-                # --- 开始构建 HTML ---
                 tooltip_parts = []
-                
-                # 头部：基本信息
                 tooltip_parts.append(f"<div style='font-family: Arial; font-size: 13px;'>")
                 tooltip_parts.append(f"<b style='font-size: 14px; color: #1976D2;'>📦 {name}</b>")
                 tooltip_parts.append(f"<br><b>型号:</b> {ref} | <b>单位:</b> {unit}")
                 tooltip_parts.append(f"<br><b>当前位置:</b> {location or '未指定'} - {cabinet or '无'}")
                 tooltip_parts.append(f"<br><b>当前库存:</b> <span style='font-weight:bold; font-size:15px;'>{current}</span> {unit}")
-                
-                # 分割线
                 tooltip_parts.append("<hr style='border: 0; border-top: 1px solid #ddd; margin: 5px 0;'>")
                 
-                # 第一部分：全局总库存 (同名同型号)
                 if len(all_locations) > 1 or (len(all_locations) == 1 and len(all_cabinets) > 1):
-                    # 多地/多柜分布
                     tooltip_parts.append(f"<b style='color: #D32F2F;'>🌍 全局总库存: {total_stock} {unit}</b>")
                     tooltip_parts.append(f"<br><i>(分布在 {len(all_locations)} 个位置，共 {len(all_cabinets)} 个存储点)</i>")
-                    
-                    # 显示具体分布 (限制显示数量以防 tooltip 太长)
                     loc_text = ", ".join(all_locations[:5])
                     if len(all_locations) > 5: loc_text += f"... (+{len(all_locations)-5})"
                     tooltip_parts.append(f"<br><b>📍 涉及位置:</b> {loc_text}")
-                    
                     cab_text = ", ".join(all_cabinets[:5])
                     if len(all_cabinets) > 5: cab_text += f"... (+{len(all_cabinets)-5})"
                     tooltip_parts.append(f"<br><b>🗄️ 具体柜号:</b> {cab_text}")
                 else:
-                    # 单一位置
                     tooltip_parts.append(f"<b style='color: #388E3C;'>✅ 全局总库存: {total_stock} {unit}</b> (唯一记录)")
                 
-                # 分割线
                 tooltip_parts.append("<hr style='border: 0; border-top: 1px solid #ddd; margin: 5px 0;'>")
                 
-                # 第二部分：同名不同型号统计
                 if other_models_stock > 0:
                     tooltip_parts.append(f"<b style='color: #F57C00;'>🔄 同名其他型号总库存: {other_models_stock} {unit}</b>")
                     tooltip_parts.append(f"<br><i>(共 {len(other_models_info)} 种其他型号)</i>")
-                    # 显示具体型号 (限制显示数量)
                     models_preview = ", ".join(other_models_info[:5])
-                    if len(other_models_info) > 5:
-                        models_preview += f"... (+{len(other_models_info)-5})"
+                    if len(other_models_info) > 5: models_preview += f"... (+{len(other_models_info)-5})"
                     tooltip_parts.append(f"<br><b>详情:</b> {models_preview}")
                 else:
                     tooltip_parts.append(f"<i style='color: #999;'>暂无同名其他型号记录</i>")
 
-                # 底部分割线
                 tooltip_parts.append("<hr style='border: 0; border-top: 1px solid #ddd; margin: 5px 0;'>")
-                
-                # 第三部分：属性信息
                 tooltip_parts.append(f"<b>类别:</b> {item.get('category', '其他')} | <b>专业:</b> {item.get('domain', '其他')}")
                 tooltip_parts.append(f"<br><b>最小库存警戒线:</b> {minimum}")
-                tooltip_parts.append("</div>") # 结束 div
+                tooltip_parts.append("</div>")
                 
-                tooltip_info = "".join(tooltip_parts)
+                advanced_tooltip = "".join(tooltip_parts)
 
-                # 4. 填充数据
-                name_item = QTableWidgetItem(display_name)
-                name_item.setToolTip(tooltip_info)
-                self.Inventory_table.setItem(row_index, 1, name_item)
+                # ================= 核心修改开始：通用 ToolTip 设置逻辑 =================
                 
-                # 其他列
+                # 定义需要处理的列索引和对应的数据源
+                # 格式：(列索引, 显示文本变量, 是否使用高级Tooltip(仅名称列))
+                columns_to_process = [
+                    (1, display_name, True),   # 名称列 (使用高级 HTML Tooltip)
+                    (2, ref, False),           # 型号
+                    (3, item.get('category', '其他'), False), # 类别
+                    (4, item.get('domain', '其他'), False),   # 专业
+                    (5, unit, False),          # 单位
+                    (8, location, False),      # 地点
+                    (9, cabinet, False),       # 柜号
+                    (10, status_text, False)   # 状态
+                ]
+
+                for col_idx, text_value, is_advanced in columns_to_process:
+                    # 创建 QTableWidgetItem
+                    cell_item = QTableWidgetItem(str(text_value))
+                    
+                    # 设置背景色
+                    cell_item.setBackground(color)
+                    
+                    # 🔍 判断是否需要设置 ToolTip
+                    # 逻辑：如果文本的实际像素宽度 > 当前列宽，则设置 ToolTip
+                    # 注意：此时列宽可能还没最终确定（因为是 ResizeToContents），
+                    # 但我们可以先设置 ToolTip，Qt 会在绘制时再次检查。
+                    # 为了保险起见，只要文本非空，我们都设置 ToolTip，
+                    # 或者更智能地：仅当文本长度超过一定阈值或列被固定时。
+                    
+                    # 【策略 A：简单粗暴】只要内容有值，就设置 ToolTip 显示完整内容
+                    # 优点：绝对可靠，用户一定能看到全称。
+                    # 缺点：鼠标放上去就有提示，可能有点烦。
+                    
+                    # 【策略 B：智能判断】(推荐) 
+                    # 由于 Qt 在 Render 阶段很难精确获取“渲染后的列宽”（因为还在计算中），
+                    # 我们采用混合策略：
+                    # 1. 名称列：始终使用高级 Tooltip (无论是否截断，因为信息量大)。
+                    # 2. 其他列：如果文本长度超过 20 字符，或者该列是固定宽度，则设置 Tooltip。
+                    #    或者直接设置：如果文本长度 > 15，就设 Tooltip。
+                    
+                    should_set_tooltip = False
+                    final_tooltip = ""
+
+                    if is_advanced:
+                        # 名称列始终使用高级 Tooltip
+                        should_set_tooltip = True
+                        final_tooltip = advanced_tooltip
+                    else:
+                        # 其他列：如果文本较长，设置纯文本 Tooltip
+                        if len(str(text_value)) > 15: 
+                            should_set_tooltip = True
+                            final_tooltip = str(text_value)
+                        elif col_idx == 8 and location: # 地点列即使短也显示完整路径提示
+                             should_set_tooltip = True
+                             final_tooltip = f"完整位置：{location} - {cabinet}"
+                        elif col_idx == 9 and cabinet:
+                             should_set_tooltip = True
+                             final_tooltip = f"柜号：{cabinet}"
+
+                    if should_set_tooltip and final_tooltip:
+                        cell_item.setToolTip(final_tooltip)
+
+                    # 填入表格
+                    self.Inventory_table.setItem(row_index, col_idx, cell_item)
+
+                # 填充其他不需要特殊 Tooltip 的列 (ID, 当前库存, 最小库存)
                 self.Inventory_table.setItem(row_index, 0, QTableWidgetItem(str(item['id'])))
-                self.Inventory_table.setItem(row_index, 2, QTableWidgetItem(ref))
-                self.Inventory_table.setItem(row_index, 3, QTableWidgetItem(item.get('category', '其他')))
-                self.Inventory_table.setItem(row_index, 4, QTableWidgetItem(item.get('domain', '其他')))
-                self.Inventory_table.setItem(row_index, 5, QTableWidgetItem(unit))
-                self.Inventory_table.setItem(row_index, 6, QTableWidgetItem(str(current)))
-                self.Inventory_table.setItem(row_index, 7, QTableWidgetItem(str(minimum)))
+                self.Inventory_table.item(row_index, 0).setBackground(color) # ID 也要上色
                 
-                loc_item = QTableWidgetItem(location)
-                loc_item.setToolTip(f"完整位置: {location} - {cabinet}")
-                self.Inventory_table.setItem(row_index, 8, loc_item)
+                curr_stock_item = QTableWidgetItem(str(current))
+                curr_stock_item.setBackground(color)
+                self.Inventory_table.setItem(row_index, 6, curr_stock_item)
                 
-                self.Inventory_table.setItem(row_index, 9, QTableWidgetItem(cabinet))
-                self.Inventory_table.setItem(row_index, 10, QTableWidgetItem(status_text))
-                
-                # 5. 批量设置背景色
-                for col in range(self.Inventory_table.columnCount()):
-                    cell_item = self.Inventory_table.item(row_index, col)
-                    if cell_item:
-                        cell_item.setBackground(color)
-                
+                min_stock_item = QTableWidgetItem(str(minimum))
+                min_stock_item.setBackground(color)
+                self.Inventory_table.setItem(row_index, 7, min_stock_item)
+
+                # 隐藏 ID 列
                 if row_index == 0:
                     self.Inventory_table.setColumnHidden(0, True)
 
@@ -488,9 +435,8 @@ class InventoryPage(QWidget):
             self.Inventory_table.setSortingEnabled(True)
             self.Inventory_table.viewport().update()
 
-
     # def _populate_table(self, data):
-    #     """填充表格数据 - 【增强版：鼠标悬停显示全局同名称/型号总库存】"""
+    #     """填充表格数据 - 【终极增强版：显示同名异型总和及全局分布详情】"""
     #     print(f"⚙️ [Render] 准备渲染 {len(data)} 行数据...")
         
     #     # 🔥【关键优化 1】暂停界面重绘
@@ -500,26 +446,52 @@ class InventoryPage(QWidget):
     #     try:
     #         self.Inventory_table.setRowCount(len(data))
             
-    #         # --- 🌟 新增步骤：预计算全局同名称+型号的总库存 ---
-    #         # 字典结构：key = (name, reference), value = total_stock_sum
-    #         global_stock_map = {}
+    #         # --- 🌟 新增步骤：深度数据聚合分析 ---
             
+    #         # 1. 基础聚合：(name, ref) -> {total_stock, locations_set, cabinets_set}
+    #         # 用于显示当前物品的全局分布
+    #         global_item_map = {} 
+            
+    #         # 2. 高级聚合：name -> {ref: stock} 
+    #         # 用于计算"同名但不同型号"的库存总和
+    #         name_model_map = {} 
+
     #         for item in data:
     #             name = str(item.get('name', '')).strip()
     #             ref = str(item.get('reference', '')).strip()
+    #             loc = str(item.get('location', '')).strip() or "未指定位置"
+    #             cab = str(item.get('cabinet', '')).strip() or "无柜号"
+                
     #             try:
     #                 stock = int(item.get('current_stock', 0))
     #             except ValueError:
     #                 stock = 0
                 
-    #             if not name and not ref:
+    #             if not name:
     #                 continue
-                    
+
+    #             # --- 构建全局物品地图 (Name + Ref) ---
     #             key = (name, ref)
-    #             if key in global_stock_map:
-    #                 global_stock_map[key] += stock
-    #             else:
-    #                 global_stock_map[key] = stock
+    #             if key not in global_item_map:
+    #                 global_item_map[key] = {
+    #                     'total': 0,
+    #                     'locations': set(),
+    #                     'cabinets': set(),
+    #                     'unit': item.get('unit', '')
+    #                 }
+                
+    #             global_item_map[key]['total'] += stock
+    #             global_item_map[key]['locations'].add(loc)
+    #             global_item_map[key]['cabinets'].add(f"{loc}-{cab}") # 记录完整路径
+
+    #             # --- 构建设备名称模型地图 (Name -> {Ref: Stock}) ---
+    #             if name not in name_model_map:
+    #                 name_model_map[name] = {}
+                
+    #             if ref not in name_model_map[name]:
+    #                 name_model_map[name][ref] = 0
+    #             name_model_map[name][ref] += stock
+            
     #         # -------------------------------------------------------
 
     #         # 定义颜色常量
@@ -552,37 +524,81 @@ class InventoryPage(QWidget):
     #             if cabinet:
     #                 display_name += f" 🗄️({cabinet})"
                 
-    #             # 3. 🌟 构建增强版 ToolTip (显示全局总和)
+    #             # 3. 🌟 构建终极版 ToolTip
     #             ref = item.get('reference', '')
+    #             unit = item.get('unit', '')
     #             key = (name, ref)
-    #             global_total = global_stock_map.get(key, 0)
                 
-    #             # 只有当全局总和大于当前行库存时（说明有其他地方也有货），才特别强调
-    #             if global_total > current:
-    #                 tooltip_info = (
-    #                     f"<b>物品:</b> {name}<br>"
-    #                     f"<b>型号:</b> {ref}<br>"
-    #                     f"<b>当前位置:</b> {location} - {cabinet}<br>"
-    #                     f"<b>当前库存:</b> {current} {item.get('unit', '')}<br>"
-    #                     f"----------------<br>"
-    #                     f"<b style='color: #D32F2F;'>🌍 全局总库存: {global_total} {item.get('unit', '')}</b><br>"
-    #                     f"<i>(包含其他地点/柜号的库存)</i><br>"
-    #                     f"----------------<br>"
-    #                     f"<b>类别:</b> {item.get('category', '其他')} | <b>专业:</b> {item.get('domain', '其他')}<br>"
-    #                     f"<b>最小库存:</b> {minimum}"
-    #                 )
+    #             # 获取当前物品的全局数据
+    #             current_global = global_item_map.get(key, {'total': 0, 'locations': set(), 'cabinets': set()})
+    #             total_stock = current_global['total']
+    #             all_locations = sorted(list(current_global['locations']))
+    #             all_cabinets = sorted(list(current_global['cabinets']))
+                
+    #             # 计算"同名不同型号"的总和
+    #             other_models_stock = 0
+    #             other_models_info = []
+    #             if name in name_model_map:
+    #                 for other_ref, stock_val in name_model_map[name].items():
+    #                     if other_ref != ref:
+    #                         other_models_stock += stock_val
+    #                         other_models_info.append(f"{other_ref}: {stock_val}")
+                
+    #             # --- 开始构建 HTML ---
+    #             tooltip_parts = []
+                
+    #             # 头部：基本信息
+    #             tooltip_parts.append(f"<div style='font-family: Arial; font-size: 13px;'>")
+    #             tooltip_parts.append(f"<b style='font-size: 14px; color: #1976D2;'>📦 {name}</b>")
+    #             tooltip_parts.append(f"<br><b>型号:</b> {ref} | <b>单位:</b> {unit}")
+    #             tooltip_parts.append(f"<br><b>当前位置:</b> {location or '未指定'} - {cabinet or '无'}")
+    #             tooltip_parts.append(f"<br><b>当前库存:</b> <span style='font-weight:bold; font-size:15px;'>{current}</span> {unit}")
+                
+    #             # 分割线
+    #             tooltip_parts.append("<hr style='border: 0; border-top: 1px solid #ddd; margin: 5px 0;'>")
+                
+    #             # 第一部分：全局总库存 (同名同型号)
+    #             if len(all_locations) > 1 or (len(all_locations) == 1 and len(all_cabinets) > 1):
+    #                 # 多地/多柜分布
+    #                 tooltip_parts.append(f"<b style='color: #D32F2F;'>🌍 全局总库存: {total_stock} {unit}</b>")
+    #                 tooltip_parts.append(f"<br><i>(分布在 {len(all_locations)} 个位置，共 {len(all_cabinets)} 个存储点)</i>")
+                    
+    #                 # 显示具体分布 (限制显示数量以防 tooltip 太长)
+    #                 loc_text = ", ".join(all_locations[:5])
+    #                 if len(all_locations) > 5: loc_text += f"... (+{len(all_locations)-5})"
+    #                 tooltip_parts.append(f"<br><b>📍 涉及位置:</b> {loc_text}")
+                    
+    #                 cab_text = ", ".join(all_cabinets[:5])
+    #                 if len(all_cabinets) > 5: cab_text += f"... (+{len(all_cabinets)-5})"
+    #                 tooltip_parts.append(f"<br><b>🗄️ 具体柜号:</b> {cab_text}")
     #             else:
-    #                 # 如果全局总和等于当前库存，说明这是唯一有货的地方（或者唯一记录）
-    #                 tooltip_info = (
-    #                     f"<b>物品:</b> {name}<br>"
-    #                     f"<b>型号:</b> {ref}<br>"
-    #                     f"<b>位置:</b> {location} - {cabinet}<br>"
-    #                     f"<b>当前库存:</b> {current} {item.get('unit', '')}<br>"
-    #                     f"<b>全局总库存:</b> {global_total} {item.get('unit', '')} (唯一记录)<br>"
-    #                     f"----------------<br>"
-    #                     f"<b>类别:</b> {item.get('category', '其他')} | <b>专业:</b> {item.get('domain', '其他')}<br>"
-    #                     f"<b>最小库存:</b> {minimum}"
-    #                 )
+    #                 # 单一位置
+    #                 tooltip_parts.append(f"<b style='color: #388E3C;'>✅ 全局总库存: {total_stock} {unit}</b> (唯一记录)")
+                
+    #             # 分割线
+    #             tooltip_parts.append("<hr style='border: 0; border-top: 1px solid #ddd; margin: 5px 0;'>")
+                
+    #             # 第二部分：同名不同型号统计
+    #             if other_models_stock > 0:
+    #                 tooltip_parts.append(f"<b style='color: #F57C00;'>🔄 同名其他型号总库存: {other_models_stock} {unit}</b>")
+    #                 tooltip_parts.append(f"<br><i>(共 {len(other_models_info)} 种其他型号)</i>")
+    #                 # 显示具体型号 (限制显示数量)
+    #                 models_preview = ", ".join(other_models_info[:5])
+    #                 if len(other_models_info) > 5:
+    #                     models_preview += f"... (+{len(other_models_info)-5})"
+    #                 tooltip_parts.append(f"<br><b>详情:</b> {models_preview}")
+    #             else:
+    #                 tooltip_parts.append(f"<i style='color: #999;'>暂无同名其他型号记录</i>")
+
+    #             # 底部分割线
+    #             tooltip_parts.append("<hr style='border: 0; border-top: 1px solid #ddd; margin: 5px 0;'>")
+                
+    #             # 第三部分：属性信息
+    #             tooltip_parts.append(f"<b>类别:</b> {item.get('category', '其他')} | <b>专业:</b> {item.get('domain', '其他')}")
+    #             tooltip_parts.append(f"<br><b>最小库存警戒线:</b> {minimum}")
+    #             tooltip_parts.append("</div>") # 结束 div
+                
+    #             tooltip_info = "".join(tooltip_parts)
 
     #             # 4. 填充数据
     #             name_item = QTableWidgetItem(display_name)
@@ -594,7 +610,7 @@ class InventoryPage(QWidget):
     #             self.Inventory_table.setItem(row_index, 2, QTableWidgetItem(ref))
     #             self.Inventory_table.setItem(row_index, 3, QTableWidgetItem(item.get('category', '其他')))
     #             self.Inventory_table.setItem(row_index, 4, QTableWidgetItem(item.get('domain', '其他')))
-    #             self.Inventory_table.setItem(row_index, 5, QTableWidgetItem(item['unit']))
+    #             self.Inventory_table.setItem(row_index, 5, QTableWidgetItem(unit))
     #             self.Inventory_table.setItem(row_index, 6, QTableWidgetItem(str(current)))
     #             self.Inventory_table.setItem(row_index, 7, QTableWidgetItem(str(minimum)))
                 
@@ -623,92 +639,7 @@ class InventoryPage(QWidget):
     #         self.Inventory_table.setSortingEnabled(True)
     #         self.Inventory_table.viewport().update()
 
-    # def _populate_table(self, data):
-    #     """填充表格数据 - 【视觉优化版：突出显示地点和柜号】"""
-    #     print(f"⚙️ [Render] 准备渲染 {len(data)} 行数据...")
-        
-    #     # 🔥【关键优化 1】暂停界面重绘
-    #     self.Inventory_table.setUpdatesEnabled(False)
-    #     self.Inventory_table.setSortingEnabled(False)
-        
-    #     try:
-    #         self.Inventory_table.setRowCount(len(data))
-            
-    #         # 定义颜色常量
-    #         critical_color = QColor(255, 179, 179) # 缺货红
-    #         warning_color = QColor(255, 240, 192)  # 预警黄
-    #         default_color = QColor(255, 255, 255)  # 正常白
-            
-    #         for row_index, item in enumerate(data):
-    #             # 1. 计算库存状态和颜色
-    #             current = item['current_stock']
-    #             minimum = item['min_stock']
-    #             status_text = "正常"
-    #             color = default_color
-                
-    #             if current <= 0:
-    #                 status_text = "缺货"
-    #                 color = critical_color
-    #             elif current <= minimum:
-    #                 status_text = "预警"
-    #                 color = warning_color
-                
-    #             # 2. 【核心修改】构建智能显示名称
-    #             # 格式：名称 + [地点] + (柜号)
-    #             name = item['name']
-    #             location = item.get('location', '')
-    #             cabinet = item.get('cabinet', '')
-                
-    #             display_name = name
-    #             if location:
-    #                 display_name += f" 📍[{location}]"
-    #             if cabinet:
-    #                 display_name += f" 🗄️({cabinet})"
-                
-    #             # 3. 填充数据
-    #             # 第 1 列：名称 (使用智能显示名称)
-    #             name_item = QTableWidgetItem(display_name)
-    #             name_item.setToolTip(f"原始名称: {name}\n地点: {location}\n柜号: {cabinet}\n型号: {item.get('reference', '')}")
-    #             self.Inventory_table.setItem(row_index, 1, name_item)
-                
-    #             # 其他列保持原样
-    #             self.Inventory_table.setItem(row_index, 0, QTableWidgetItem(str(item['id'])))
-    #             self.Inventory_table.setItem(row_index, 2, QTableWidgetItem(item['reference']))
-    #             self.Inventory_table.setItem(row_index, 3, QTableWidgetItem(item.get('category', '其他')))
-    #             self.Inventory_table.setItem(row_index, 4, QTableWidgetItem(item.get('domain', '其他')))
-    #             self.Inventory_table.setItem(row_index, 5, QTableWidgetItem(item['unit']))
-    #             self.Inventory_table.setItem(row_index, 6, QTableWidgetItem(str(current)))
-    #             self.Inventory_table.setItem(row_index, 7, QTableWidgetItem(str(minimum)))
-                
-    #             # 第 8 列：地点 (单独保留一列，方便筛选)
-    #             loc_item = QTableWidgetItem(location)
-    #             loc_item.setToolTip(f"完整位置: {location} - {cabinet}")
-    #             self.Inventory_table.setItem(row_index, 8, loc_item)
-                
-    #             # 第 9 列：柜号
-    #             self.Inventory_table.setItem(row_index, 9, QTableWidgetItem(cabinet))
-                
-    #             # 第 10 列：状态
-    #             self.Inventory_table.setItem(row_index, 10, QTableWidgetItem(status_text))
-                
-    #             # 4. 批量设置背景色
-    #             for col in range(self.Inventory_table.columnCount()):
-    #                 cell_item = self.Inventory_table.item(row_index, col)
-    #                 if cell_item:
-    #                     cell_item.setBackground(color)
-                
-    #             # 隐藏 ID 列 (只在第一行执行一次判断即可，但在循环内也无妨，因为被暂停了)
-    #             if row_index == 0:
-    #                 self.Inventory_table.setColumnHidden(0, True)
 
-    #         self.update_status_label()
-    #         print("🎉 [Render] 数据填充完成。")
-            
-    #     finally:
-    #         # 🔥【关键优化 3】恢复界面重绘
-    #         self.Inventory_table.setUpdatesEnabled(True)
-    #         self.Inventory_table.setSortingEnabled(True)
-    #         self.Inventory_table.viewport().update()
 
     def refresh_data(self):
         """刷新按钮的处理函数：重新从数据库加载数据"""
