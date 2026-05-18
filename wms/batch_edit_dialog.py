@@ -1,0 +1,337 @@
+"""
+batch_edit_dialog.py
+批量编辑库存物品对话框
+支持同时修改多个物品的类别、专业、单位、最小库存和存放位置
+"""
+
+import sys
+from typing import List, Dict
+from PyQt6.QtWidgets import (
+    QDialog, QDialogButtonBox, QVBoxLayout, QGridLayout, 
+    QLabel, QSpinBox, QMessageBox, QApplication, QLineEdit,
+    QComboBox, QCheckBox, QGroupBox, QScrollArea
+)
+from PyQt6.QtCore import Qt
+
+import db_manager
+
+
+class BatchEditDialog(QDialog):
+    """
+    批量编辑多个库存物品的对话框。
+    只编辑选中要修改的字段，未选中的字段保持原值不变。
+    """
+    def __init__(self, db_path: str, selected_items: List[Dict], parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"批量编辑 - 已选中 {len(selected_items)} 个物品")
+        self.setMinimumWidth(500)
+        self.db_path = db_path
+        self.selected_items = selected_items
+        
+        self.init_ui()
+
+    def init_ui(self):
+        main_layout = QVBoxLayout(self)
+        
+        # 显示选中的物品列表
+        items_group = QGroupBox("选中的物品")
+        items_layout = QVBoxLayout()
+        
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setMaximumHeight(150)
+        
+        scroll_content = QLabel()
+        items_text = "\n".join([
+            f"• [{item['reference']}] {item['name']}" 
+            for item in self.selected_items
+        ])
+        scroll_content.setText(items_text)
+        scroll_content.setWordWrap(True)
+        scroll_content.setStyleSheet("padding: 5px;")
+        
+        scroll_area.setWidget(scroll_content)
+        items_layout.addWidget(scroll_area)
+        items_group.setLayout(items_layout)
+        main_layout.addWidget(items_group)
+        
+        # 说明标签
+        info_label = QLabel(
+            "提示：只勾选并修改需要批量更新的字段，未勾选的字段将保持原值不变。"
+        )
+        info_label.setStyleSheet("color: #FF9800; font-weight: bold; padding: 10px;")
+        info_label.setWordWrap(True)
+        main_layout.addWidget(info_label)
+        
+        # 编辑字段区域
+        form_layout = QGridLayout()
+        form_layout.setSpacing(10)
+        
+        row = 0
+        
+        # --- 1. 材料类别 (Category) ---
+        self.category_checkbox = QCheckBox("修改材料类别 (Category)")
+        self.category_combo = QComboBox()
+        # 尝试从数据库加载选项，如果失败则使用默认值
+        try:
+            category_options = db_manager.get_config_options(self.db_path, 'CATEGORY')
+        except Exception:
+            category_options = ["电子元件", "机械零件", "工具", "耗材", "其他"]
+            
+        if not category_options:
+            category_options = ["其他"]
+        self.category_combo.addItems(category_options)
+        self.category_combo.setEnabled(False)
+        self.category_checkbox.stateChanged.connect(
+            lambda state: self.category_combo.setEnabled(state == Qt.CheckState.Checked.value)
+        )
+        
+        form_layout.addWidget(self.category_checkbox, row, 0)
+        form_layout.addWidget(self.category_combo, row, 1)
+        row += 1
+        
+        # --- 2. 专业类别 (Domain) --- (新增)
+        self.domain_checkbox = QCheckBox("修改专业 (Domain)")
+        self.domain_combo = QComboBox()
+        # 尝试从数据库加载选项，如果失败则使用默认值
+        try:
+            domain_options = db_manager.get_config_options(self.db_path, 'DOMAIN')
+        except Exception:
+            domain_options = ["电气", "暖通", "水务", "通用", "其他"]
+
+        if not domain_options:
+            domain_options = ["其他"]
+        self.domain_combo.addItems(domain_options)
+        self.domain_combo.setEnabled(False)
+        self.domain_checkbox.stateChanged.connect(
+            lambda state: self.domain_combo.setEnabled(state == Qt.CheckState.Checked.value)
+        )
+        
+        form_layout.addWidget(self.domain_checkbox, row, 0)
+        form_layout.addWidget(self.domain_combo, row, 1)
+        row += 1
+        
+        # --- 3. 计量单位 (Unit) ---
+        self.unit_checkbox = QCheckBox("修改计量单位 (Unit)")
+        self.unit_combo = QComboBox()
+        try:
+            unit_options = db_manager.get_config_options(self.db_path, 'UNIT')
+        except Exception:
+            unit_options = ["个", "套", "对", "箱"]
+            
+        if not unit_options:
+            unit_options = ["个"]
+        self.unit_combo.addItems(unit_options)
+        self.unit_combo.setEnabled(False)
+        self.unit_checkbox.stateChanged.connect(
+            lambda state: self.unit_combo.setEnabled(state == Qt.CheckState.Checked.value)
+        )
+        
+        form_layout.addWidget(self.unit_checkbox, row, 0)
+        form_layout.addWidget(self.unit_combo, row, 1)
+        row += 1
+        
+        # --- 4. 最小库存 (Min Stock) ---
+        self.min_stock_checkbox = QCheckBox("修改最小库存 (Min Stock)")
+        self.min_stock_spin = QSpinBox()
+        self.min_stock_spin.setRange(0, 999999)
+        self.min_stock_spin.setValue(5)
+        self.min_stock_spin.setEnabled(False)
+        self.min_stock_checkbox.stateChanged.connect(
+            lambda state: self.min_stock_spin.setEnabled(state == Qt.CheckState.Checked.value)
+        )
+        
+        form_layout.addWidget(self.min_stock_checkbox, row, 0)
+        form_layout.addWidget(self.min_stock_spin, row, 1)
+        row += 1
+        
+        # --- 5. 存放位置 (Location) ---
+        self.location_checkbox = QCheckBox("修改存放位置 (Location)")
+        self.location_combo = QComboBox()
+        try:
+            location_options = db_manager.get_config_options(self.db_path, 'LOCATION')
+        except Exception:
+            location_options = ["基地仓库", "大仓库", "其他"]
+            
+        if not location_options:
+            location_options = ["其他"]
+        self.location_combo.addItems(location_options)
+        self.location_combo.setEnabled(False)
+        self.location_checkbox.stateChanged.connect(
+            lambda state: self.location_combo.setEnabled(state == Qt.CheckState.Checked.value)
+        )
+        
+        form_layout.addWidget(self.location_checkbox, row, 0)
+        form_layout.addWidget(self.location_combo, row, 1)
+        row += 1
+
+        # ================= 新增开始 =================
+        # --- 6. 当前柜号 (Cabinet) ---
+        self.cabinet_checkbox = QCheckBox("修改当前柜号 (Cabinet)")
+        self.cabinet_entry = QLineEdit()
+        self.cabinet_entry.setPlaceholderText("例如：A-01, B-02")
+        self.cabinet_entry.setEnabled(False)
+        self.cabinet_checkbox.stateChanged.connect(
+            lambda state: self.cabinet_entry.setEnabled(state == Qt.CheckState.Checked.value)
+        )
+        
+        form_layout.addWidget(self.cabinet_checkbox, row, 0)
+        form_layout.addWidget(self.cabinet_entry, row, 1)
+        row += 1
+        # ================= 新增结束 =================
+        
+        main_layout.addLayout(form_layout)
+        
+        # 按钮栏
+        self.buttonBox = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setText("批量更新")
+        self.buttonBox.accepted.connect(self.accept_action)
+        self.buttonBox.rejected.connect(self.reject)
+        
+        main_layout.addWidget(self.buttonBox)
+        
+    def accept_action(self):
+        """执行批量更新操作"""
+        
+        # 检查是否至少选择了一个字段进行修改
+        if not any([
+            self.category_checkbox.isChecked(),
+            self.domain_checkbox.isChecked(),  # 检查 domain 是否选中
+            self.unit_checkbox.isChecked(),
+            self.min_stock_checkbox.isChecked(),
+            self.location_checkbox.isChecked(),
+            self.cabinet_checkbox.isChecked()  # 新增
+        ]):
+            QMessageBox.warning(
+                self, 
+                "未选择修改字段", 
+                "请至少勾选一个要修改的字段。"
+            )
+            return
+        
+        # 确认对话框
+        checked_fields = []
+        if self.category_checkbox.isChecked():
+            checked_fields.append(f"材料类别 → {self.category_combo.currentText()}")
+        if self.domain_checkbox.isChecked(): 
+            checked_fields.append(f"专业类别 → {self.domain_combo.currentText()}") # 确认 domain 文本
+        if self.unit_checkbox.isChecked():
+            checked_fields.append(f"计量单位 → {self.unit_combo.currentText()}")
+        if self.min_stock_checkbox.isChecked():
+            checked_fields.append(f"最小库存 → {self.min_stock_spin.value()}")
+        if self.location_checkbox.isChecked():
+            checked_fields.append(f"存放位置 → {self.location_combo.currentText()}")
+        
+        
+        if self.cabinet_checkbox.isChecked():
+            checked_fields.append(f"当前柜号 → {self.cabinet_entry.text().strip()}")
+        
+
+        fields_text = "\n".join([f"  • {field}" for field in checked_fields])
+        
+        reply = QMessageBox.question(
+            self,
+            "确认批量修改",
+            f"您确定要对 {len(self.selected_items)} 个物品进行以下修改吗？\n\n"
+            f"{fields_text}\n\n"
+            f"此操作将更新所有选中物品的这些字段。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        # 执行批量更新
+        success_count = 0
+        failed_count = 0
+        
+        for item in self.selected_items:
+            try:
+                item_id = item['id']
+                name = item['name']
+                reference = item['reference']
+                
+                # 确定要更新的值
+                category = self.category_combo.currentText() if self.category_checkbox.isChecked() else item.get('category', '其他')
+                # 获取 domain 字段值，如果未选中，保留原值（默认为 '其他'）
+                domain = self.domain_combo.currentText() if self.domain_checkbox.isChecked() else item.get('domain', '其他') 
+                unit = self.unit_combo.currentText() if self.unit_checkbox.isChecked() else item['unit']
+                min_stock = self.min_stock_spin.value() if self.min_stock_checkbox.isChecked() else item['min_stock']
+                location = self.location_combo.currentText() if self.location_checkbox.isChecked() else item['location']
+                # 获取柜号：如果勾选了用新值，否则保留原值
+                cabinet = self.cabinet_entry.text().strip() if self.cabinet_checkbox.isChecked() else item.get('cabinet', '')
+                
+                # 调用数据库更新
+                if db_manager.update_inventory_item(
+                    db_path=self.db_path,
+                    item_id=item_id,
+                    name=name,
+                    reference=reference,
+                    category=category,
+                    domain=domain,  # 传递 domain 字段
+                    unit=unit,
+                    min_stock=min_stock,
+                    location=location,
+                    cabinet=cabinet  # 传递当前柜号
+
+                ):
+                    success_count += 1
+                else:
+                    failed_count += 1
+                    print(f"更新失败：{name} (ID: {item_id})")
+                    
+            except Exception as e:
+                failed_count += 1
+                print(f"更新物品时发生错误：{e}")
+        
+        # 显示结果
+        if failed_count == 0:
+            QMessageBox.information(
+                self,
+                "批量更新成功",
+                f"成功更新了 {success_count} 个物品！"
+            )
+            super().accept()
+        else:
+            QMessageBox.warning(
+                self,
+                "批量更新完成（有错误）",
+                f"成功更新：{success_count} 个\n失败：{failed_count} 个\n\n请检查失败的物品。"
+            )
+            super().accept()
+
+
+if __name__ == '__main__':
+    # 模拟 db_manager 类以使测试代码可运行
+    class MockDBManager:
+        @staticmethod
+        def get_config_options(db_path, category):
+            options = {
+                'CATEGORY': ["电子元件", "机械零件", "工具", "耗材", "其他"],
+                'DOMAIN': ["电气", "暖通", "水务", "通用", "其他"],
+                'UNIT': ["个", "套", "对", "箱"],
+                'LOCATION': ["基地仓库", "大仓库", "其他"]
+            }
+            return options.get(category, [])
+
+        @staticmethod
+        def update_inventory_item(*args, **kwargs):
+            # 模拟数据库更新成功
+            return True
+
+    db_manager = MockDBManager()
+    app = QApplication(sys.argv)
+    
+    test_items = [
+        {'id': 1, 'name': 'LED灯管', 'reference': 'LED-001', 'category': '电子元件', 
+         'domain': '弱电', 'unit': '个', 'min_stock': 10, 'location': '大仓库', 'cabinet': 'A-01'},
+        {'id': 2, 'name': '螺丝刀', 'reference': 'TOOL-001', 'category': '工具', 
+         'domain': '通用', 'unit': '套', 'min_stock': 5, 'location': '基地仓库', 'cabinet': ''}
+    ]
+    
+    dialog = BatchEditDialog('test_storage.db', test_items)
+    dialog.exec()
+    sys.exit(0)
