@@ -1,5 +1,6 @@
 # login.py，config表只有id，category和value三个键
 # 仓库管理系统的登录界面和数据库初始化逻辑。
+#打包指令：pyinstaller --noconfirm --onefile --windowed --icon "logo.ico" --add-data "logo.png;." --add-data "wechat_qr.png;." --add-data "github.svg;." --add-data "telegram.svg;." --add-data "wechat.svg;." --name "Honsen_WMS" login.py
 
 import sys
 import os
@@ -380,7 +381,8 @@ class LoginWindow(QWidget):
             
             if is_password:
                 entry.setEchoMode(QLineEdit.EchoMode.Password)
-            
+                # 🔴 新增：按下回车键时触发登录
+                entry.returnPressed.connect(self.login_action)
             self.entries[key] = entry
             
             grid.addWidget(label, row, 0, Qt.AlignmentFlag.AlignLeft)

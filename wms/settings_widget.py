@@ -396,70 +396,74 @@ class DataManagementPage(QWidget):
     def import_inventory_action(self):
         """从 CSV 文件导入或更新库存清单"""
         filepath, _ = QFileDialog.getOpenFileName(
-            self, 
-            "选择要导入的库存文件", 
-            os.path.expanduser("~"), 
-            "CSV Files (*.csv)"
+            self, "选择要导入的库存文件", os.path.expanduser("~"), "CSV Files (*.csv)"
         )
         if not filepath:
             return
 
         reply = QMessageBox.question(
-            self, 
-            '确认导入', 
-            f"您确定要使用文件 '{os.path.basename(filepath)}' 导入数据吗？\n\n警告：此操作将批量更新或新增库存数据！", 
+            self, '确认导入', 
+            f"您确定要使用文件 '{os.path.basename(filepath)}' 导入数据吗？", 
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, 
             QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        # 🔴 1. 提前定义变量，防止报错
-        error_logs = [] 
-        stats = {'inserted': 0, 'updated': 0, 'failed': 0}
-
         try:
-            # 🔴 2. 调用工具函数，接收数据和日志
-            items_to_import, error_logs = data_utility.import_from_csv(filepath)
+            # 🔴 1. 获取原始数据
+            items_raw, error_logs = data_utility.import_from_csv(filepath)
             
-            if not items_to_import:
-                # 如果数据为空，但有日志，说明是解析出错了
-                if error_logs:
-                    error_text = "\n".join(error_logs)
-                    QMessageBox.warning(self, "导入失败", f"无法读取文件数据，请检查格式：\n\n{error_text}")
-                else:
-                    QMessageBox.information(self, "提示", "文件内容为空。")
+            if not items_raw and error_logs:
+                QMessageBox.warning(self, "导入失败", f"文件解析完全失败:\n\n" + "\n".join(error_logs[:10]))
                 return
 
+            # 🔴 2. 关键：注入行号，让数据携带身份信息
+            items_to_import = []
+            for idx, item in enumerate(items_raw, start=2):
+                item['row'] = idx  # 将行号存入字典
+                items_to_import.append(item)
+
             # 🔴 3. 执行数据库导入
-            stats = db_manager.batch_import_inventory(self.db_path, items_to_import)
+            stats = db_manager.batch_import_Inventory(self.db_path, items_to_import)
             
         except Exception as e:
-            # 捕获意外错误
-            QMessageBox.critical(self, "导入错误", f"操作过程中发生异常: {e}")
+            QMessageBox.critical(self, "导入错误", f"操作过程中发生系统异常: {e}")
             return
 
-        # 🔴 4. 构建最终的消息
+        # 🔴 4. 构建最终消息
         message = (
-            f"库存批量导入操作完成:\n"
+            f"操作统计:\n"
             f"  新增记录: {stats['inserted']} 条\n"
             f"  更新记录: {stats['updated']} 条\n"
+            f"  CSV合并行: {stats['merged_rows']} 条\n"
             f"  失败记录: {stats['failed']} 条\n"
         )
 
-        # 🔴 5. 根据情况显示弹窗
-        if error_logs or stats['failed'] > 0:
-            # 如果有解析警告或者数据库导入失败，显示详细日志
-            if error_logs:
-                message += "\n--- 详细警告 ---\n" + "\n".join(error_logs)
-            QMessageBox.warning(self, "导入完成 (含警告)", message)
+        # 🔴 5. 合并显示详细错误信息
+        # 优先显示 CSV 解析错误，接着显示数据库执行失败的具体行号
+        details = []
+        if error_logs:
+            details.append("\n--- CSV 解析警告 ---")
+            details.extend(error_logs)
+        
+        if stats.get('failed_rows'):
+            details.append("\n--- 数据库执行失败详情 ---")
+            details.extend(stats['failed_rows'])
+
+        if details:
+            # 限制显示内容，防止弹窗过大
+            display_text = message + "\n".join(details[:15])
+            if len(details) > 15:
+                display_text += "\n...(更多错误已省略)..."
+            QMessageBox.warning(self, "导入结果 (含警告)", display_text)
         else:
             QMessageBox.information(self, "导入成功", message)
 
         # 🔴 6. 刷新回调
         if self.refresh_inventory_callback:
             self.refresh_inventory_callback()
-
+            
 class SettingsWidget(QWidget):
     """主设置窗口"""
     def __init__(self, db_path, refresh_inventory_callback=None, parent=None): 

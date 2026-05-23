@@ -348,6 +348,7 @@ def import_from_csv(filepath: str) -> tuple[List[Dict[str, Union[str, int, float
 
             # 构建对象
             item = {
+                'row': i,  # 👈 加上这一行
                 'name': name,
                 'reference': reference,
                 'category': category,
