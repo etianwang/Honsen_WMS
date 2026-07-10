@@ -21,11 +21,15 @@ pyinstaller "$Root\desktop\honsen_wms.spec" --noconfirm
 Pop-Location
 
 $Dist = Join-Path $Root "dist"
+$DistDb = Join-Path $Dist "db"
 
-$DbSrc = Join-Path $Root "db"
-if (Test-Path $DbSrc) {
-    Write-Host "==> 复制 db 到 dist"
-    Copy-Item $DbSrc (Join-Path $Dist "db") -Recurse -Force
+# 交付包不带开发/调试数据库，仅保留空 db 目录供首次运行初始化
+if (Test-Path $DistDb) {
+    Write-Host "==> 清理 dist\db（移除调试数据）"
+    Remove-Item $DistDb -Recurse -Force
 }
+Write-Host "==> 创建空 db 目录（客户首次登录页初始化）"
+New-Item -ItemType Directory -Path $DistDb -Force | Out-Null
 
 Write-Host "完成: $Dist\Honsen WMS.exe"
+Write-Host "说明: dist\db 为空，客户运行 exe 后在登录页点击「初始化数据库」"
