@@ -177,7 +177,7 @@ class MainWindow(QMainWindow):
         line.setFrameShape(QFrame.Shape.HLine)
         v_layout.addWidget(line)
 
-        copyright_label = QLabel("Ver 2026.03\nAuthor: Etienne")
+        copyright_label = QLabel("Ver 2026.07\nAuthor: Etienne")
         copyright_label.setObjectName("copyrightLabel")
         copyright_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         v_layout.addWidget(copyright_label)

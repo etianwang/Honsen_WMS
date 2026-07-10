@@ -139,7 +139,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 >
                   退出登录
                 </button>
-                <div className="mt-2 text-[10px] opacity-60">Ver 2026.03</div>
+                <div className="mt-2 text-[10px] opacity-60">Ver 2026.07</div>
                 {/* 侧栏版本戳 · HS */}
               </div>
             </BorderGlow>

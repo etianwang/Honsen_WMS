@@ -231,7 +231,7 @@ class MainWindow(QMainWindow):
         v_layout.addWidget(line)
         
         # 版权信息
-        copyright_label = QLabel("Ver 2026.05\nAuthor: Etienne")
+        copyright_label = QLabel("Ver 2026.07\nAuthor: Etienne")
         copyright_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         copyright_label.setStyleSheet("color: #bbdefb; font-size: 8pt; padding-bottom: 5px;")
         v_layout.addWidget(copyright_label)
