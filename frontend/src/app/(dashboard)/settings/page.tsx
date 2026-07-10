@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { ConfigCategoryCard } from "@/components/settings/ConfigCategoryCard";
 import { useToast } from "@/components/ui/Toast";
 import { downloadAuthenticated, uploadAuthenticated } from "@/lib/download";
 import { ApiError, apiFetch, ConfigMap } from "@/lib/api";
@@ -125,42 +126,23 @@ export default function SettingsPage() {
         {loading ? (
           <p className="text-text-secondary">加载中...</p>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {CATEGORIES.map(({ key, label }) => (
-              <Card key={key} className="p-4">
-                <h3 className="mb-2 font-bold text-text-primary">{label}</h3>
-                <div className="mb-2 flex gap-2">
-                  <input
-                    className="glass-input min-w-0 flex-1 rounded-lg px-2 py-2 text-sm"
-                    placeholder="新值"
-                    value={inputs[key] ?? ""}
-                    onChange={(e) =>
-                      setInputs((prev) => ({ ...prev, [key]: e.target.value }))
-                    }
-                  />
-                  <Button variant="primary" onClick={() => addValue(key)}>
-                    添加
-                  </Button>
-                </div>
-                <select
-                  className="glass-input mb-2 w-full rounded-lg px-2 py-2 text-sm"
-                  size={6}
-                  value={selected[key] ?? ""}
-                  onChange={(e) =>
-                    setSelected((prev) => ({ ...prev, [key]: e.target.value }))
-                  }
-                >
-                  <option value="">— 选择 —</option>
-                  {(config?.[key] ?? []).map((v) => (
-                    <option key={v} value={v}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
-                <Button variant="danger" className="w-full" onClick={() => deleteValue(key)}>
-                  删除选中
-                </Button>
-              </Card>
+              <ConfigCategoryCard
+                key={key}
+                label={label}
+                items={config?.[key] ?? []}
+                inputValue={inputs[key] ?? ""}
+                selected={selected[key] ?? ""}
+                onInputChange={(value) =>
+                  setInputs((prev) => ({ ...prev, [key]: value }))
+                }
+                onSelect={(value) =>
+                  setSelected((prev) => ({ ...prev, [key]: value }))
+                }
+                onAdd={() => addValue(key)}
+                onDelete={() => deleteValue(key)}
+              />
             ))}
           </div>
         )}
