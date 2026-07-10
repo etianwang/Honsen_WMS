@@ -4,6 +4,10 @@ $Root = Split-Path -Parent $PSScriptRoot
 
 Write-Host "==> 安装 Python 依赖"
 python -m pip install -r "$Root\backend\requirements.txt"
+python -m pip install pillow
+
+Write-Host "==> 生成多尺寸应用图标 logo.ico"
+python "$Root\scripts\build_app_icon.py"
 
 Write-Host "==> 构建 React 前端 (静态导出)"
 Push-Location "$Root\frontend"
@@ -17,6 +21,7 @@ pyinstaller "$Root\desktop\honsen_wms.spec" --noconfirm
 Pop-Location
 
 $Dist = Join-Path $Root "dist"
+
 $DbSrc = Join-Path $Root "db"
 if (Test-Path $DbSrc) {
     Write-Host "==> 复制 db 到 dist"
