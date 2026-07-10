@@ -16,4 +16,11 @@ Push-Location "$Root"
 pyinstaller "$Root\desktop\honsen_wms.spec" --noconfirm
 Pop-Location
 
-Write-Host "完成: $Root\dist\Honsen WMS.exe"
+$Dist = Join-Path $Root "dist"
+$DbSrc = Join-Path $Root "db"
+if (Test-Path $DbSrc) {
+    Write-Host "==> 复制 db 到 dist"
+    Copy-Item $DbSrc (Join-Path $Dist "db") -Recurse -Force
+}
+
+Write-Host "完成: $Dist\Honsen WMS.exe"
