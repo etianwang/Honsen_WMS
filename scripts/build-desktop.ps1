@@ -32,4 +32,4 @@ Write-Host "==> 创建空 db 目录（客户首次登录页初始化）"
 New-Item -ItemType Directory -Path $DistDb -Force | Out-Null
 
 Write-Host "完成: $Dist\Honsen WMS.exe"
-Write-Host "说明: dist\db 为空，客户运行 exe 后在登录页点击「初始化数据库」"
+Write-Host "说明: dist\db 为空，客户运行 exe 后在登录页点击 [初始化数据库]"
