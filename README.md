@@ -31,8 +31,38 @@
 ---
 
 ### 🛠 技术栈与开发初衷
+* **交付形态：** **React（Next.js）** 界面 + 本地 FastAPI + **pywebview**，PyInstaller 打包 exe（非浏览器 Web 站）。<br>
 * **开发背景：** AI 辅助开发，致力于解决公司内部管理痛点。<br>
-* **定位：** 内部自用工具，不追求与大厂复杂系统对标，重在“能用”、“好用”。
+* **定位：** 内部自用工具，重在“能用”、“好用”。
+
+### ▶ 开发运行
+
+```powershell
+# 前后端分离开发（推荐，支持热更新）
+# 终端 1 — API
+cd E:\Project\Py\wms
+python -m pip install -r backend/requirements.txt
+python -m uvicorn backend.main:app --reload --port 8000
+
+# 终端 2 — React
+cd frontend
+npm install
+npm run dev
+# 浏览器打开 http://localhost:3000
+```
+
+### ▶ 桌面预览与打包
+
+```powershell
+cd frontend && npm run build:desktop
+python desktop/launcher.py
+
+# 一键打包 exe
+.\scripts\build-desktop.ps1
+# 输出：dist\Honsen WMS.exe
+```
+
+数据库：`db/honsen_storage.db`（exe 旁 `db/` 目录）。初始化见 PyQt6 登录页或后续 React 设置页。
 
 ---
 

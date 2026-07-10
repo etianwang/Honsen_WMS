@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+/* 弘盛 WMS 主题令牌 — 玻璃风主色板 */
+
+:root {
+  --brand-primary: #3f51b5;
+  --brand-primary-hover: #5c6bc0;
+  --brand-primary-dark: #283593;
+  --sidebar-bg: #1a237e;
+  --sidebar-text: #c5cae9;
+  --sidebar-active: #3f51b5;
+  --sidebar-accent: #ff9800;
+  --page-bg: #f5f6fa;
+  --card-bg: #ffffff;
+  --border: #e2e8f0;
+  --text-primary: #2c3e50;
+  --text-secondary: #64748b;
+}
+
+@theme inline {
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-hover: var(--brand-primary-hover);
+  --color-brand-dark: var(--brand-primary-dark);
+  --color-sidebar-bg: var(--sidebar-bg);
+  --color-sidebar-text: var(--sidebar-text);
+  --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-page-bg: var(--page-bg);
+  --color-card-bg: var(--card-bg);
+  --color-border: var(--border);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --font-sans: "Microsoft YaHei UI", "Segoe UI", sans-serif;
+}
+
+body {
+  background: var(--page-bg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+}
+
+/* 玻璃拟态 */
+.glass {
+  background: rgba(255, 255, 255, 0.52);
+  backdrop-filter: blur(18px) saturate(1.35);
+  -webkit-backdrop-filter: blur(18px) saturate(1.35);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow:
+    0 4px 24px rgba(63, 81, 181, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+.glass-strong {
+  background: rgba(255, 255, 255, 0.68);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+}
+
+.glass-subtle {
+  background: rgba(255, 255, 255, 0.32);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+}
+
+.glass-input {
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  box-shadow: inset 0 1px 2px rgba(63, 81, 181, 0.04);
+}
+
+.glass-input:focus {
+  background: rgba(255, 255, 255, 0.78);
+  border-color: rgba(63, 81, 181, 0.45);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(63, 81, 181, 0.15);
+}
+
+.content-area-bg {
+  background:
+    radial-gradient(ellipse 85% 55% at 8% 0%, rgba(114, 84, 237, 0.14), transparent 52%),
+    radial-gradient(ellipse 70% 50% at 95% 100%, rgba(19, 102, 237, 0.12), transparent 48%),
+    radial-gradient(ellipse 50% 40% at 50% 50%, rgba(63, 81, 181, 0.05), transparent 70%),
+    linear-gradient(165deg, #e4eaf8 0%, #eef2fb 45%, #f4f6fc 100%);
+}
+
+/* 桌面无边框窗口：标题栏拖拽（pywebview 用 pywebview-drag-region） */
+.desktop-titlebar {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.pywebview-drag-region {
+  cursor: default;
+}
+
+.desktop-titlebar-controls,
+.desktop-titlebar-controls button {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}

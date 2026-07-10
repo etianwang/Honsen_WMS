@@ -167,7 +167,7 @@ class BatchEditDialog(QDialog):
 
         # ================= 新增开始 =================
         # --- 6. 当前柜号 (Cabinet) ---
-        self.cabinet_checkbox = QCheckBox("修改当前柜号 (Cabinet)")
+        self.cabinet_checkbox = QCheckBox("修改柜号 (Cabinet)")
         self.cabinet_entry = QLineEdit()
         self.cabinet_entry.setPlaceholderText("例如：A-01, B-02")
         self.cabinet_entry.setEnabled(False)
@@ -226,7 +226,7 @@ class BatchEditDialog(QDialog):
         
         
         if self.cabinet_checkbox.isChecked():
-            checked_fields.append(f"当前柜号 → {self.cabinet_entry.text().strip()}")
+            checked_fields.append(f"柜号 → {self.cabinet_entry.text().strip()}")
         
 
         fields_text = "\n".join([f"  • {field}" for field in checked_fields])

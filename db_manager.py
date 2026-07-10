@@ -1,6 +1,7 @@
 # db_manager.py
 # 数据库管理模块，包含所有与 SQLite 数据库交互的函数。
 # 负责初始化数据库、CRUD 操作、交易记录等功能。
+# [弘盛仓管] 数据层 · 与 PyQt6 / Web 共用同一套 SQLite 结构
 import sqlite3
 import hashlib
 from typing import List, Dict, Union, Optional
@@ -135,22 +136,6 @@ def initialize_database(db_path: str):
             )
         """)
 
-        # 检查并插入初始管理员用户 (如果不存在)
-        # 注意：这里默认用户名是 'admin'，密码是 '123456'
-        # 如果您的 login.py 使用的是 'Honsen_Admin' / '66778899HONSEN'，请确保只在一个地方初始化用户
-        # 通常建议以 login.py 的初始化为准，或者在这里检查用户名是否存在再插入
-        cursor.execute("SELECT id FROM admin_user WHERE username = 'admin'")
-        if cursor.fetchone() is None:
-            # 只有当 'admin' 用户不存在时才创建默认用户
-            # 如果您的系统主要使用 Honsen_Admin，这段代码可能不会触发，或者会创建一个备用账号
-            initial_password_hash = hash_password('123456') 
-            try:
-                cursor.execute("INSERT INTO admin_user (username, password) VALUES (?, ?)", 
-                                 ('admin', initial_password_hash))
-                print("[DB Init] 创建了默认 admin 用户 (密码: 123456)")
-            except sqlite3.IntegrityError:
-                pass # 用户已存在
-            
         # 检查并插入默认配置选项
         default_configs = {
             'LOCATION': ["基地仓库", "大仓库", "别墅", "办公楼", "公寓", "其他"],
@@ -824,41 +809,54 @@ def batch_import_Inventory(db_path: str, items: List[Dict]) -> Dict[str, int]:
 
 
 # --- Transactions CRUD/业务逻辑 ---
+# 出入库核心：库存变动与流水同事务提交
 
 def record_transaction(db_path: str, item_id: int, date: str, type: str, quantity: int, recipient_source: str, project_ref: str) -> bool:
     """
     记录交易并原子性地更新库存 (单笔)。
     """
     conn = None
+    type_upper = (type or "").upper()
+    if type_upper not in ("IN", "OUT"):
+        return False
     try:
-        conn = sqlite3.connect(db_path)
+        conn = _connect_db(db_path)
         cursor = conn.cursor()
-        
-        # 1. 检查库存 (仅限 OUT 类型)
-        if type == 'OUT':
-            cursor.execute("SELECT current_stock FROM Inventory WHERE id = ?", (item_id,))
-            current_stock = cursor.fetchone()
-            if current_stock is None or current_stock[0] < quantity:
-                return False # 库存不足
-        
-        # 2. 更新库存
-        stock_change = quantity if type == 'IN' else -quantity
-        cursor.execute("""
-            UPDATE Inventory SET current_stock = current_stock + ? WHERE id = ?
-        """, (stock_change, item_id))
 
-        # 3. 记录交易
-        cursor.execute("""
+        cursor.execute("SELECT current_stock FROM Inventory WHERE id = ?", (item_id,))
+        row = cursor.fetchone()
+        if row is None:
+            return False
+
+        current_stock = row[0]
+        if type_upper == "OUT" and (current_stock is None or current_stock < quantity):
+            return False
+
+        stock_change = quantity if type_upper == "IN" else -quantity
+        cursor.execute(
+            """
+            UPDATE Inventory SET current_stock = current_stock + ? WHERE id = ?
+        """,
+            (stock_change, item_id),
+        )
+        if cursor.rowcount == 0:
+            conn.rollback()
+            return False
+
+        cursor.execute(
+            """
             INSERT INTO transactions (item_id, date, type, quantity, recipient_source, project_ref)
             VALUES (?, ?, ?, ?, ?, ?)
-        """, (item_id, date, type, quantity, recipient_source, project_ref))
-        
+        """,
+            (item_id, date, type_upper, quantity, recipient_source, project_ref),
+        )
+
         conn.commit()
         return True
     except sqlite3.Error as e:
         print(f"数据库错误：交易记录失败：{e}")
         if conn:
-            conn.rollback() 
+            conn.rollback()
         return False
     finally:
         if conn:
@@ -1011,7 +1009,7 @@ def get_transactions_history(
         
         query = """
             SELECT 
-                t.id, t.date, t.type, t.quantity, t.recipient_source, t.project_ref,
+                t.id, t.item_id, t.date, t.type, t.quantity, t.recipient_source, t.project_ref,
                 i.name AS item_name, i.reference AS item_ref, 
                 i.location AS location,
                 i.category AS category,

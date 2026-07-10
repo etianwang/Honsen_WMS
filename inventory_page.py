@@ -1,19 +1,19 @@
 # Inventory_page.py
 import sys
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit,
     QMessageBox, QApplication, QLabel, QDialog, QFileDialog,
-    QComboBox
+    QComboBox, QFrame
 )
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QColor
 import os
-# 导入数据库管理器
-import db_manager 
-from add_item_dialog import AddItemDialog 
-from edit_item_dialog import EditItemDialog 
+import db_manager
+from add_item_dialog import AddItemDialog
+from edit_item_dialog import EditItemDialog
 from batch_edit_dialog import BatchEditDialog
+from theme.loader import apply_widget_role
 
 class InventoryPage(QWidget):
     """
@@ -25,14 +25,23 @@ class InventoryPage(QWidget):
     """
     def __init__(self, db_path: str):
         super().__init__()
+        self.setObjectName("contentPage")
         self.db_path = db_path
         self.all_data = []  # 存储所有数据用于筛选
         self.init_ui()
         self.load_Inventory_data()
 
     def init_ui(self):
-        main_layout = QVBoxLayout(self)
-        
+        page_layout = QVBoxLayout(self)
+        page_layout.setContentsMargins(16, 16, 16, 16)
+        page_layout.setSpacing(0)
+
+        card = QFrame()
+        card.setObjectName("pageCard")
+        main_layout = QVBoxLayout(card)
+        main_layout.setContentsMargins(16, 16, 16, 12)
+        main_layout.setSpacing(12)
+
         # --- 1. 顶部操作栏 (工具栏) ---
         toolbar_layout = QHBoxLayout()
         
@@ -67,8 +76,8 @@ class InventoryPage(QWidget):
         toolbar_layout.addWidget(self.location_filter_combo)
         
         # 刷新按钮
-        self.refresh_btn = QPushButton("🔄 刷新")
-        self.refresh_btn.setStyleSheet("background-color: #FF9800; color: white; font-weight: bold; padding: 8px;")
+        self.refresh_btn = QPushButton("刷新")
+        apply_widget_role(self.refresh_btn, "warning")
         self.refresh_btn.setToolTip("从数据库重新加载最新数据")
         self.refresh_btn.clicked.connect(self.refresh_data)
         toolbar_layout.addWidget(self.refresh_btn)
@@ -80,12 +89,11 @@ class InventoryPage(QWidget):
         self.edit_btn = QPushButton("编辑物品")
         self.batch_edit_btn = QPushButton("批量编辑")
         self.del_btn = QPushButton("删除物品")
-        
-        # 设置按钮样式
-        self.add_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 8px;")
-        self.edit_btn.setStyleSheet("background-color: #2196F3; color: white; padding: 8px;")
-        self.batch_edit_btn.setStyleSheet("background-color: #9C27B0; color: white; font-weight: bold; padding: 8px;")
-        self.del_btn.setStyleSheet("background-color: #f44336; color: white; padding: 8px;")
+
+        apply_widget_role(self.add_btn, "success")
+        apply_widget_role(self.edit_btn, "info")
+        apply_widget_role(self.batch_edit_btn, "accent")
+        apply_widget_role(self.del_btn, "danger")
         
         # 连接信号
         self.add_btn.clicked.connect(self.add_item_dialog)
@@ -105,6 +113,7 @@ class InventoryPage(QWidget):
         self.Inventory_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.Inventory_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.Inventory_table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
+        self.Inventory_table.setAlternatingRowColors(True)
 
         # 定义表头：【修改】移除"初始柜号"，只保留"柜号"
         # 索引: 0:ID, 1:Name, 2:Ref, 3:Category, 4:Domain, 5:Unit, 
@@ -135,11 +144,13 @@ class InventoryPage(QWidget):
         self.Inventory_table.setColumnWidth(10, 60)
         # 底部状态栏
         self.status_label = QLabel("总计 0 条记录。")
-        self.status_label.setStyleSheet("padding: 5px; font-weight: bold;")
+        self.status_label.setObjectName("pageStatusBar")
         main_layout.addWidget(self.status_label)
         
         # 连接选择变化信号
         self.Inventory_table.itemSelectionChanged.connect(self.update_status_label)
+
+        page_layout.addWidget(card)
 
 
     def load_Inventory_data(self):

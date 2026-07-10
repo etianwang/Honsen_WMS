@@ -101,9 +101,11 @@ class BatchTransactionDialog(QDialog):
         control_layout = QHBoxLayout()
         self.add_row_button = QPushButton("✚ 添加行")
         self.remove_row_button = QPushButton("━ 删除行")
-        self.recipient_label = QLabel("接收人/来源:")
+        self.recipient_label = QLabel("来源柜号:" if self.type == 'IN' else "接收人:")
         self.recipient_entry = QLineEdit()
-        self.recipient_entry.setPlaceholderText("柜号/采购方/员工姓名...")
+        self.recipient_entry.setPlaceholderText(
+            "请输入来源柜号" if self.type == 'IN' else "请输入接收人姓名"
+        )
         self.recipient_entry.textChanged.connect(self._check_overall_validity)
 
         control_layout.addWidget(self.add_row_button)

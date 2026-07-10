@@ -135,22 +135,6 @@ def initialize_database(db_path: str):
             )
         """)
 
-        # 检查并插入初始管理员用户 (如果不存在)
-        # 注意：这里默认用户名是 'admin'，密码是 '123456'
-        # 如果您的 login.py 使用的是 'Honsen_Admin' / '66778899HONSEN'，请确保只在一个地方初始化用户
-        # 通常建议以 login.py 的初始化为准，或者在这里检查用户名是否存在再插入
-        cursor.execute("SELECT id FROM admin_user WHERE username = 'admin'")
-        if cursor.fetchone() is None:
-            # 只有当 'admin' 用户不存在时才创建默认用户
-            # 如果您的系统主要使用 Honsen_Admin，这段代码可能不会触发，或者会创建一个备用账号
-            initial_password_hash = hash_password('123456') 
-            try:
-                cursor.execute("INSERT INTO admin_user (username, password) VALUES (?, ?)", 
-                                 ('admin', initial_password_hash))
-                print("[DB Init] 创建了默认 admin 用户 (密码: 123456)")
-            except sqlite3.IntegrityError:
-                pass # 用户已存在
-            
         # 检查并插入默认配置选项
         default_configs = {
             'LOCATION': ["基地仓库", "大仓库", "别墅", "办公楼", "公寓", "其他"],

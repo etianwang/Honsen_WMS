@@ -9,11 +9,12 @@ from PyQt6.QtWidgets import (
     QFrame, QFileDialog, QTabWidget, QScrollArea
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont, QIcon 
+from PyQt6.QtGui import QFont, QIcon
 
 try:
-    import db_manager 
-    import data_utility 
+    import db_manager
+    import data_utility
+    from theme.loader import apply_widget_role
 except ImportError:
     # 模拟导入缺失的模块以确保测试代码能运行
     class MockDBManager:
@@ -26,6 +27,9 @@ except ImportError:
         def export_to_csv(self, data, filepath, headers): return True
         def import_from_csv(self, filepath): return []
     data_utility = MockDataUtility()
+
+    def apply_widget_role(widget, role):
+        pass
     pass
 
 def get_db_connection(db_path):
@@ -165,22 +169,19 @@ class ConfigurationPage(QWidget):
         main_layout.addWidget(scroll_area)
         
     def _create_config_panel(self, category: str, input_attr: str, list_attr: str, btn_attr: str, display_name: str) -> QFrame:
-        """创建单个配置项的面板。"""
         frame = QFrame()
-        frame.setFrameShape(QFrame.Shape.StyledPanel)
-        frame.setStyleSheet("QFrame { border: 1px solid #d0d0d0; border-radius: 8px; padding: 15px; background-color: #ffffff; }")
-        
+        frame.setObjectName("configPanel")
+
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(10, 10, 10, 10)
-        
+
         title_label = QLabel(f"<b>{display_name} ({category})</b>")
-        title_label.setStyleSheet("font-size: 12pt; color: #3f51b5; margin-bottom: 5px;")
+        title_label.setObjectName("configPanelTitle")
         layout.addWidget(title_label)
-        
+
         line = QFrame()
         line.setFrameShape(QFrame.Shape.HLine)
         line.setFrameShadow(QFrame.Shadow.Sunken)
-        line.setStyleSheet("QFrame { border: 1px solid #eee; margin-bottom: 10px;}")
         layout.addWidget(line)
         
         self._setup_config_section(layout, category, input_attr, list_attr, btn_attr, display_name)
@@ -199,7 +200,7 @@ class ConfigurationPage(QWidget):
         
         add_btn = QPushButton("添加")
         add_btn.setFixedWidth(80)
-        add_btn.setStyleSheet("background-color: #4CAF50; color: white; border-radius: 5px; font-weight: bold;")
+        apply_widget_role(add_btn, "success")
         add_btn.clicked.connect(lambda: self.add_config_action(category, input_attr, list_attr, display_name))
         
         add_layout.addWidget(input_field)
@@ -208,13 +209,12 @@ class ConfigurationPage(QWidget):
 
         list_widget = QListWidget()
         list_widget.setMinimumHeight(150)
-        list_widget.setStyleSheet("QListWidget {border: 1px solid #ddd; padding: 5px; border-radius: 5px; background-color: #fafafa;}")
         setattr(self, list_attr, list_widget)
         section_layout.addWidget(list_widget)
 
         delete_layout = QHBoxLayout()
-        delete_btn = QPushButton(f"删除选中")
-        delete_btn.setStyleSheet("background-color: #f44336; color: white; font-weight: bold; border-radius: 5px;")
+        delete_btn = QPushButton("删除选中")
+        apply_widget_role(delete_btn, "danger")
         delete_btn.setMinimumHeight(35)
         delete_btn.clicked.connect(lambda: self.delete_config_action(category, list_attr, display_name))
         delete_btn.setEnabled(False)
@@ -313,7 +313,9 @@ class DataManagementPage(QWidget):
 
         main_layout.addWidget(QLabel("<h2>数据导入/导出 (CSV)</h2>"))
         main_layout.addWidget(QLabel("使用 CSV 文件进行数据的备份和批量更新。"))
-        main_layout.addWidget(QLabel("警告：导入操作会覆盖或新增现有库存数据，请谨慎操作。", styleSheet="color: #f44336; font-weight: bold;"))
+        warning = QLabel("警告：导入操作会覆盖或新增现有库存数据，请谨慎操作。")
+        warning.setObjectName("warningText")
+        main_layout.addWidget(warning)
         main_layout.addSpacing(20)
 
         # 导出部分
@@ -324,11 +326,11 @@ class DataManagementPage(QWidget):
 
         self.export_inv_btn = QPushButton("导出库存清单 (.csv)")
         self.export_inv_btn.clicked.connect(self.export_inventory_action)
-        self.export_inv_btn.setStyleSheet("background-color: #2196F3; color: white; padding: 10px; border-radius: 4px; font-weight: bold;")
-        
+        apply_widget_role(self.export_inv_btn, "info")
+
         self.export_tx_btn = QPushButton("导出交易记录 (.csv)")
         self.export_tx_btn.clicked.connect(self.export_transactions_action)
-        self.export_tx_btn.setStyleSheet("background-color: #2196F3; color: white; padding: 10px; border-radius: 4px; font-weight: bold;")
+        apply_widget_role(self.export_tx_btn, "info")
         
         export_grid.addWidget(self.export_inv_btn, 0, 0)
         export_grid.addWidget(self.export_tx_btn, 0, 1)
@@ -343,7 +345,7 @@ class DataManagementPage(QWidget):
 
         self.import_inv_btn = QPushButton("导入/更新库存清单 (.csv)")
         self.import_inv_btn.clicked.connect(self.import_inventory_action)
-        self.import_inv_btn.setStyleSheet("background-color: #FF9800; color: black; padding: 10px; border-radius: 4px; font-weight: bold;")
+        apply_widget_role(self.import_inv_btn, "warning")
         
         import_layout.addWidget(self.import_inv_btn) 
         main_layout.addWidget(import_frame)
@@ -351,18 +353,16 @@ class DataManagementPage(QWidget):
         main_layout.addStretch(1)
 
     def _create_section_frame(self, title):
-        """创建带标题和边框的区域框架。"""
         frame = QFrame()
-        frame.setFrameShape(QFrame.Shape.StyledPanel)
-        frame.setStyleSheet("QFrame { border: 1px solid #ccc; border-radius: 8px; padding: 15px; }")
-        
+        frame.setObjectName("sectionFrame")
+
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(0, 0, 0, 10) 
+        layout.setContentsMargins(16, 16, 16, 10)
 
         title_label = QLabel(f"<b>{title}</b>")
-        title_label.setStyleSheet("font-size: 12pt; color: #333; margin-bottom: 10px;")
+        title_label.setObjectName("sectionTitle")
         layout.addWidget(title_label)
-        
+
         return frame
 
     def export_inventory_action(self):
@@ -439,8 +439,9 @@ class DataManagementPage(QWidget):
 
 class SettingsWidget(QWidget):
     """主设置窗口"""
-    def __init__(self, db_path, refresh_inventory_callback=None, parent=None): 
+    def __init__(self, db_path, refresh_inventory_callback=None, parent=None):
         super().__init__(parent)
+        self.setObjectName("contentPage")
         self.db_path = db_path
         self.refresh_inventory_callback = refresh_inventory_callback 
         self.setWindowTitle("系统配置与管理")
@@ -448,24 +449,16 @@ class SettingsWidget(QWidget):
     
     def init_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(20, 20, 20, 20)
-        main_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignCenter)
+        main_layout.setContentsMargins(16, 16, 16, 16)
+        main_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         title = QLabel("<h2>系统配置与管理</h2>")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("color: #3f51b5;")
+        title.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        title.setObjectName("configPanelTitle")
         main_layout.addWidget(title)
-        main_layout.addSpacing(10)
+        main_layout.addSpacing(8)
 
         self.tab_widget = QTabWidget()
-        self.tab_widget.setFixedWidth(900)
-        self.tab_widget.setStyleSheet(
-            """
-            QTabWidget::pane { border: 1px solid #ccc; border-radius: 8px; }
-            QTabBar::tab { padding: 10px 20px; font-weight: bold; }
-            QTabBar::tab:selected { background: #e0e0e0; }
-            """
-        )
 
         self.config_page = ConfigurationPage(self.db_path)
         self.tab_widget.addTab(self.config_page, "基础配置")
@@ -473,7 +466,7 @@ class SettingsWidget(QWidget):
         self.data_page = DataManagementPage(self.db_path, self.refresh_inventory_callback)
         self.tab_widget.addTab(self.data_page, "数据导入/导出")
 
-        main_layout.addWidget(self.tab_widget, alignment=Qt.AlignmentFlag.AlignCenter)
+        main_layout.addWidget(self.tab_widget)
         main_layout.addStretch(1)
 
 

@@ -58,7 +58,7 @@ class TransactionDialog(QDialog):
         
         filter_layout.addWidget(QLabel("搜索:"))
         self.search_filter = QLineEdit()
-        self.search_filter.setPlaceholderText("名称/型号/当前柜号/入库柜号")
+        self.search_filter.setPlaceholderText("名称/型号/柜号/入库来源")
         filter_layout.addWidget(self.search_filter)
         filter_layout.addStretch(1)
         main_layout.addLayout(filter_layout)
@@ -78,40 +78,32 @@ class TransactionDialog(QDialog):
         form_layout.addWidget(QLabel("选择物品:"), 0, 0, Qt.AlignmentFlag.AlignLeft)
         self.item_combo = QComboBox()
         self.item_combo.setMinimumWidth(300)
-        # 【修复点 1】连接信号，确保切换物品时更新柜号
-        self.item_combo.currentIndexChanged.connect(self._on_item_changed)
         form_layout.addWidget(self.item_combo, 0, 1)
 
-        # 第 1 行：当前柜号 (对应 inventory.cabinet)
-        form_layout.addWidget(QLabel("当前柜号:"), 1, 0, Qt.AlignmentFlag.AlignLeft)
-        self.cabinet_entry = QLineEdit()
-        self.cabinet_entry.setPlaceholderText("物品当前位置 (可修改)")
-        form_layout.addWidget(self.cabinet_entry, 1, 1)
-
-        # 第 2 行：数量 (注意行号改为 2，避免与上一行冲突)
-        form_layout.addWidget(QLabel("数量 (Quantity):"), 2, 0, Qt.AlignmentFlag.AlignLeft)
+        # 第 1 行：数量
+        form_layout.addWidget(QLabel("数量 (Quantity):"), 1, 0, Qt.AlignmentFlag.AlignLeft)
         self.quantity_spin = QSpinBox()
         self.quantity_spin.setRange(1, 999999)
         self.quantity_spin.setValue(1)
-        form_layout.addWidget(self.quantity_spin, 2, 1)
+        form_layout.addWidget(self.quantity_spin, 1, 1)
 
-        # 第 3 行：来源/接收人
-        label_text = "入库柜号/来源:" if self.type == 'IN' else "接收人:"
+        # 第 2 行：来源/接收人
+        label_text = "来源柜号:" if self.type == 'IN' else "接收人:"
         self.recipient_label = QLabel(label_text)
         self.recipient_entry = QLineEdit()
-        self.recipient_entry.setPlaceholderText("请输入来源/新柜号/员工姓名")
-        form_layout.addWidget(self.recipient_label, 3, 0, Qt.AlignmentFlag.AlignLeft)
-        form_layout.addWidget(self.recipient_entry, 3, 1)
+        self.recipient_entry.setPlaceholderText("请输入来源柜号" if self.type == 'IN' else "请输入接收人姓名")
+        form_layout.addWidget(self.recipient_label, 2, 0, Qt.AlignmentFlag.AlignLeft)
+        form_layout.addWidget(self.recipient_entry, 2, 1)
         
-        # 第 4 行：项目 (仅出库显示)
+        # 第 3 行：项目 (仅出库显示)
         self.project_label = QLabel("项目 (Project Ref):")
         self.project_combo = QComboBox() 
         project_options = db_manager.get_config_options(self.db_path, 'PROJECT')
         if not project_options: project_options = ["", "项目A", "项目B"]
         self.project_combo.addItems(project_options)
         
-        form_layout.addWidget(self.project_label, 4, 0, Qt.AlignmentFlag.AlignLeft)
-        form_layout.addWidget(self.project_combo, 4, 1)
+        form_layout.addWidget(self.project_label, 3, 0, Qt.AlignmentFlag.AlignLeft)
+        form_layout.addWidget(self.project_combo, 3, 1)
         
         if self.type == 'IN':
             self.project_label.setVisible(False)
@@ -132,16 +124,6 @@ class TransactionDialog(QDialog):
         main_layout.addWidget(self.buttonBox)
         
         # _populate_item_combo 会在 _apply_filters 中调用，这里不需要再调
-
-    def _on_item_changed(self, index):
-        """【修复点 1 的核心】当物品改变时，自动填充当前柜号"""
-        if index < 0 or not self.filtered_items:
-            self.cabinet_entry.clear()
-            return
-        item = self.filtered_items[index]
-        # 读取 inventory 表中的 cabinet 字段
-        current_cab = item.get('cabinet', '')
-        self.cabinet_entry.setText(current_cab if current_cab else "")
 
     def _open_batch_dialog(self):
         batch_dialog = BatchTransactionDialog(self.db_path, self.type, self)
@@ -219,11 +201,11 @@ class TransactionDialog(QDialog):
                 item_name = item.get('name', '').lower()
                 item_ref = item.get('reference', '').lower()
                 
-                # 【新增】1. 检查当前柜号 (inventory.cabinet)
+                # 1. 检查库存柜号 (inventory.cabinet)
                 curr_cab = (item.get('cabinet', '') or '').lower()
                 match_curr_cab = search_text in curr_cab
                 
-                # 【已有】2. 检查历史入库柜号 (transactions.recipient_source)
+                # 2. 检查历史入库来源柜号 (transactions.recipient_source)
                 associated_cabinets = self.item_cabinet_map.get(item_ref, [])
                 match_hist_cab = False
                 for cab in associated_cabinets:
@@ -273,21 +255,11 @@ class TransactionDialog(QDialog):
             return
         
         item_id = self.item_combo.currentData()
-        # 【修复点 3】安全获取当前选中的物品数据
-        current_item = self.filtered_items[self.item_combo.currentIndex()]
         
-        # 2. 【关键】检查并更新当前柜号 (inventory.cabinet)
-        new_cabinet = self.cabinet_entry.text().strip()
-        old_cabinet = current_item.get('cabinet', '')
-        
-        if new_cabinet != old_cabinet:
-            if not db_manager.update_item_cabinet(self.db_path, item_id, new_cabinet):
-                QMessageBox.warning(self, "警告", "更新当前柜号失败，但将继续执行交易。")
-        
-        # 3. 验证其他字段
+        # 2. 验证其他字段
         recipient_source = self.recipient_entry.text().strip()
         if not recipient_source:
-            QMessageBox.warning(self, "输入错误", f"{'入库柜号' if self.type == 'IN' else '接收人'} 不能为空。")
+            QMessageBox.warning(self, "输入错误", f"{'来源柜号' if self.type == 'IN' else '接收人'} 不能为空。")
             return
             
         quantity = self.quantity_spin.value()

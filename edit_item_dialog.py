@@ -63,7 +63,7 @@ class EditItemDialog(QDialog):
             # **** 新增专业 (Domain) 下拉框 ****
             ("专业 (Domain):", 'domain', 'combo_domain'), 
             ("计量单位 (Unit):", 'unit', 'combo_unit'), 
-            ("当前柜号 (Cabinet):", 'cabinet', 'text'), # 【新增】当前柜号输入框
+            ("柜号 (Cabinet):", 'cabinet', 'text'),
             ("最小库存 (Min Stock):", 'min_stock', 'spin'),
             ("存放位置 (Location):", 'location', 'combo_location') 
         ]

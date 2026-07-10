@@ -2,27 +2,28 @@
 import sys
 import csv
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit,
     QMessageBox, QDialog, QApplication, QLabel,
-    QDateEdit, QComboBox, QFileDialog
+    QDateEdit, QComboBox, QFileDialog, QFrame
 )
-from PyQt6.QtCore import Qt, QDateTime, QDate 
+from PyQt6.QtCore import Qt, QDateTime, QDate
 from PyQt6.QtGui import QColor
-from typing import Optional, List, Dict, Union 
+from typing import Optional, List, Dict, Union
 
-# 导入数据库管理器和交易对话框
-import db_manager 
+import db_manager
 from transaction_dialog import TransactionDialog
 from edit_transaction_dialog import EditTransactionDialog
+from theme.loader import apply_widget_role
 
 class TransactionPage(QWidget):
     """
     交易记录界面：展示 Transactions 表数据，并提供筛选、入库/出库、修改、冲销和删除操作。
     增加了类别、地点、项目和专业筛选和底部统计功能，以及导出功能。
     """
-    def __init__(self, db_path: str, inventory_page_ref): 
+    def __init__(self, db_path: str, inventory_page_ref):
         super().__init__()
+        self.setObjectName("contentPage")
         self.db_path = db_path
         self.inventory_page_ref = inventory_page_ref
         self.current_data: List[Dict[str, Union[int, str]]] = []
@@ -30,22 +31,28 @@ class TransactionPage(QWidget):
         self.load_transaction_data()
 
     def init_ui(self):
-        main_layout = QVBoxLayout(self)
-        
-        # --- 1. 顶部操作栏 (入库/出库/修改/冲销/删除) ---
+        page_layout = QVBoxLayout(self)
+        page_layout.setContentsMargins(16, 16, 16, 16)
+
+        card = QFrame()
+        card.setObjectName("pageCard")
+        main_layout = QVBoxLayout(card)
+        main_layout.setContentsMargins(16, 16, 16, 12)
+        main_layout.setSpacing(12)
+
         toolbar_layout = QHBoxLayout()
-        
+
         self.in_btn = QPushButton("入库 (IN)")
         self.out_btn = QPushButton("出库 (OUT)")
-        self.edit_btn = QPushButton("修改记录")  # 新增修改按钮
+        self.edit_btn = QPushButton("修改记录")
         self.reverse_btn = QPushButton("冲销交易")
         self.delete_btn = QPushButton("删除记录")
-        
-        self.in_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 8px;")
-        self.out_btn.setStyleSheet("background-color: #f44336; color: white; font-weight: bold; padding: 8px;")
-        self.edit_btn.setStyleSheet("background-color: #2196F3; color: white; padding: 8px; font-weight: bold;")  # 蓝色按钮
-        self.reverse_btn.setStyleSheet("background-color: #ff9800; color: white; padding: 8px;")
-        self.delete_btn.setStyleSheet("background-color: #9E9E9E; color: white; padding: 8px; font-weight: bold;")
+
+        apply_widget_role(self.in_btn, "success")
+        apply_widget_role(self.out_btn, "danger")
+        apply_widget_role(self.edit_btn, "info")
+        apply_widget_role(self.reverse_btn, "warning")
+        apply_widget_role(self.delete_btn, "muted")
         
         self.in_btn.clicked.connect(lambda: self.open_transaction_dialog('IN'))
         self.out_btn.clicked.connect(lambda: self.open_transaction_dialog('OUT'))
@@ -131,13 +138,12 @@ class TransactionPage(QWidget):
         
         # G. 筛选/刷新按钮
         self.filter_btn = QPushButton("筛选/刷新")
-        self.filter_btn.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold; padding: 8px;")
+        apply_widget_role(self.filter_btn, "primary")
         self.filter_btn.clicked.connect(self.refresh_and_apply_filters)
         filter_row2.addWidget(self.filter_btn)
 
-        # H. 导出筛选结果按钮 
         self.export_btn = QPushButton("导出筛选结果 (CSV)")
-        self.export_btn.setStyleSheet("background-color: #00BCD4; color: white; font-weight: bold; padding: 8px;")
+        apply_widget_role(self.export_btn, "info")
         self.export_btn.clicked.connect(self.export_filtered_transactions_action)
         filter_row2.addWidget(self.export_btn)
         
@@ -149,7 +155,8 @@ class TransactionPage(QWidget):
         self.transaction_table = QTableWidget()
         self.transaction_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.transaction_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.transaction_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection) 
+        self.transaction_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.transaction_table.setAlternatingRowColors(True)
 
         # 定义新的表头顺序：数量 (7) 移到 物品型号/规格 (3) 后面，作为第 4 列
         # 新顺序: ID(0), 日期/时间(1), 物品名称(2), 物品型号/规格(3), 物品数量(4), 储存位置(5), 专业(6), 物品类型(7), 接收人/来源(8), 出库项目(9)
@@ -162,7 +169,7 @@ class TransactionPage(QWidget):
             "    柜号    ",
             "专业",
             "物品类型",
-            "接收人/柜号",
+            "接收人/来源",
             "出库项目"
         ]
         self.transaction_table.setColumnCount(len(self.headers))
@@ -182,8 +189,10 @@ class TransactionPage(QWidget):
         
         # 底部状态栏
         self.status_label = QLabel("总计 0 条交易记录。")
-        self.status_label.setStyleSheet("padding: 5px; font-weight: bold; border-top: 1px solid #ccc;")
+        self.status_label.setObjectName("pageStatusBar")
         main_layout.addWidget(self.status_label)
+
+        page_layout.addWidget(card)
 
     # ----------------------------------------
     # --- 筛选和数据加载逻辑 ---
@@ -332,6 +341,13 @@ class TransactionPage(QWidget):
         self._refresh_filter_dropdowns()
         self.apply_filters()
 
+    @staticmethod
+    def _cabinet_display(tx: dict) -> str:
+        """入库显示来源柜号，出库显示库存柜号。"""
+        if tx.get('type', '').upper() == 'IN':
+            return tx.get('recipient_source', '') or ''
+        return tx.get('cabinet', '') or ''
+
 
     def _load_data_with_filters(self, start_date: Optional[str] = None, end_date: Optional[str] = None, 
                                  tx_type: Optional[str] = None, item_search: Optional[str] = None,
@@ -407,7 +423,7 @@ class TransactionPage(QWidget):
             is_out = tx_type_upper == 'OUT'
             # 修改 3: 检查是否是任何冲销类型
             is_reversal = tx_type_upper.startswith('REVERSAL')
-            cabinet_val = tx.get('cabinet', '') 
+            cabinet_val = self._cabinet_display(tx)
             # 填充表格行（新列顺序：数量(4) 移到 型号(3) 后面）
             # 新顺序: ID(0), 日期/时间(1), 物品名称(2), 物品型号/规格(3), 物品数量(4), 储存位置(5), 专业(6), 物品类型(7), 接收人/来源(8), 出库项目(9)
             # 原始数据键索引: 'id', 'date', 'item_name', 'item_ref', 'location', 'domain', 'type', 'quantity', 'recipient_source', 'project_ref'
@@ -601,11 +617,11 @@ class TransactionPage(QWidget):
         # 保持导出顺序与表格顺序一致
         csv_headers = [
             "日期/时间", "物品名称", "物品型号", "数量", 
-            "储存位置", "柜号", "专业", "类型", "接收人/柜号", "项目"
+            "储存位置", "柜号", "专业", "类型", "来源柜号/接收人", "项目"
         ]
         data_keys = [
             'date', 'item_name', 'item_ref', 'quantity', 
-            'location', 'cabinet','domain', 'type', 'recipient_source', 'project_ref'
+            'location', '_cabinet_display', 'domain', 'type', 'recipient_source', 'project_ref'
         ]
         
         # 写入文件
@@ -618,7 +634,10 @@ class TransactionPage(QWidget):
                 writer.writerow(csv_headers)
                 
                 for tx in self.current_data:
-                    row = [tx.get(key, '') for key in data_keys]
+                    row = [
+                        self._cabinet_display(tx) if key == '_cabinet_display' else tx.get(key, '')
+                        for key in data_keys
+                    ]
                     writer.writerow(row)
             
             QMessageBox.information(self, "导出成功", f"筛选结果已成功导出到：\n**{filepath}**")
