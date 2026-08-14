@@ -20,6 +20,17 @@ DB_NAME = 'db/honsen_storage.db' # 建议更改为您实际使用的文件名
 
 # --- 辅助函数 ---
 
+def _safe_print(message: str) -> None:
+    """Windows GBK 控制台遇到无法编码字符时，避免把业务逻辑打成 500。"""
+    try:
+        print(message)
+    except UnicodeEncodeError:
+        try:
+            print(message.encode("ascii", "replace").decode("ascii"))
+        except Exception:
+            pass
+
+
 def hash_password(password: str) -> str:
     """对密码进行 SHA256 哈希处理"""
     # 注意：此方法用于 settings_page.py 的密码存储（SHA256）
@@ -82,13 +93,13 @@ def initialize_database(db_path: str):
         except sqlite3.OperationalError:
             try:
                 cursor.execute("ALTER TABLE Inventory ADD COLUMN cabinet TEXT DEFAULT ''")
-                print("[DB Migration] 成功添加列: cabinet")
+                _safe_print("[DB Migration] 成功添加列: cabinet")
                 
                 # 【可选】如果想把 old initial_cabinet 的数据合并过来，取消下面注释
                 # cursor.execute("UPDATE Inventory SET cabinet = initial_cabinet WHERE cabinet = '' AND initial_cabinet != ''")
                 
             except sqlite3.OperationalError as e:
-                print(f"[DB Migration Error] 添加 cabinet 失败：{e}")
+                _safe_print(f"[DB Migration Error] 添加 cabinet 失败：{e}")
     
     # initial_cabinet 的迁移检查已移除，因为不再需要该列
         # ---------------------------------------
@@ -151,10 +162,10 @@ def initialize_database(db_path: str):
                      pass # 已存在
                      
         conn.commit()
-        print(f"✅ 数据库初始化完成：{db_path}")
+        _safe_print(f"[OK] 数据库初始化完成：{db_path}")
         
     except sqlite3.Error as e:
-        print(f"❌ 数据库初始化错误：{e}")
+        _safe_print(f"[ERR] 数据库初始化错误：{e}")
         if conn:
             conn.rollback()
     finally:
@@ -177,7 +188,7 @@ def check_admin_credentials(db_path: str, username: str, password: str) -> bool:
             return stored_password_hash == input_password_hash
         return False
     except sqlite3.Error as e:
-        print(f"数据库错误：认证检查失败：{e}")
+        _safe_print(f"数据库错误：认证检查失败：{e}")
         return False
     finally:
         if conn:
@@ -199,7 +210,7 @@ def update_admin_password(db_path: str, new_password: str) -> bool:
         conn.commit()
         return True
     except sqlite3.Error as e:
-        print(f"数据库错误：更新密码失败：{e}")
+        _safe_print(f"数据库错误：更新密码失败：{e}")
         return False
     finally:
         if conn:
@@ -218,7 +229,7 @@ def get_config_options(db_path: str, category: str) -> List[str]:
         
         return [row[0] for row in cursor.fetchall()]
     except sqlite3.Error as e:
-        print(f"数据库错误：获取配置选项失败：{e}")
+        _safe_print(f"数据库错误：获取配置选项失败：{e}")
         return []
     finally:
         if conn:
@@ -238,7 +249,7 @@ def insert_config_option(db_path: str, category: str, value: str) -> bool:
     except sqlite3.IntegrityError:
         return False
     except sqlite3.Error as e:
-        print(f"数据库错误：插入配置选项失败：{e}")
+        _safe_print(f"数据库错误：插入配置选项失败：{e}")
         return False
     finally:
         if conn:
@@ -256,7 +267,7 @@ def delete_config_option(db_path: str, category: str, value: str) -> bool:
         conn.commit()
         return cursor.rowcount > 0
     except sqlite3.Error as e:
-        print(f"数据库错误：删除配置选项失败：{e}")
+        _safe_print(f"数据库错误：删除配置选项失败：{e}")
         return False
     finally:
         if conn:
@@ -292,7 +303,7 @@ def insert_Inventory_item(db_path: str, name: str, reference: str, category: str
         cursor.execute(check_sql, (name.strip(), reference.strip(), location.strip(), cabinet.strip()))
         if cursor.fetchone():
             # 发现重复
-            print(f"⚠️ 插入失败：检测到重复记录 -> 名称:{name}, 型号:{reference}, 地点:{location}, 柜号:{cabinet}")
+            _safe_print(f"[WARN] 插入失败：检测到重复记录 -> 名称:{name}, 型号:{reference}, 地点:{location}, 柜号:{cabinet}")
             return None
         
         # 2. 执行插入
@@ -314,11 +325,11 @@ def insert_Inventory_item(db_path: str, name: str, reference: str, category: str
         
         conn.commit()
         new_id = cursor.lastrowid
-        print(f"✅ 成功插入新物品 (ID: {new_id}): {name} @ {location}-{cabinet}")
+        _safe_print(f"[OK] 成功插入新物品 (ID: {new_id}): {name} @ {location}-{cabinet}")
         return new_id
         
     except sqlite3.Error as e:
-        print(f"💥 数据库插入错误: {e}")
+        _safe_print(f"[ERR] 数据库插入错误: {e}")
         if conn:
             conn.rollback()
         return None
@@ -386,7 +397,7 @@ def update_Inventory_item(
         return cursor.rowcount > 0
     
     except sqlite3.Error as e:
-        print(f"数据库错误：更新物品失败：{e}")
+        _safe_print(f"数据库错误：更新物品失败：{e}")
         return False
     finally:
         if conn:
@@ -408,7 +419,7 @@ def delete_Inventory_item(db_path: str, item_id: int) -> bool:
         conn.commit()
         return cursor.rowcount > 0
     except sqlite3.Error as e:
-        print(f"数据库错误：删除物品失败：{e}")
+        _safe_print(f"数据库错误：删除物品失败：{e}")
         return False
     finally:
         if conn:
@@ -423,7 +434,7 @@ def get_all_Inventory(db_path: str) -> List[Dict[str, Union[int, str]]]:
         cursor.execute("SELECT * FROM Inventory ORDER BY name")
         return [dict(row) for row in cursor.fetchall()]
     except sqlite3.Error as e:
-        print(f"数据库错误：获取库存失败：{e}")
+        _safe_print(f"数据库错误：获取库存失败：{e}")
         return []
     finally:
         if conn:
@@ -439,7 +450,7 @@ def get_Inventory_item_by_id(db_path: str, item_id: int) -> Optional[Dict]:
         row = cursor.fetchone()
         return dict(row) if row else None
     except sqlite3.Error as e:
-        print(f"数据库错误：获取单个库存项失败：{e}")
+        _safe_print(f"数据库错误：获取单个库存项失败：{e}")
         return None
     finally:
         if conn:
@@ -454,7 +465,7 @@ def get_Inventory_names(db_path: str) -> List[Dict[str, Union[int, str]]]:
         cursor.execute("SELECT id, name, reference, unit, current_stock FROM Inventory ORDER BY name")
         return [dict(row) for row in cursor.fetchall()]
     except sqlite3.Error as e:
-        print(f"数据库错误：获取物品名称失败：{e}")
+        _safe_print(f"数据库错误：获取物品名称失败：{e}")
         return []
     finally:
         if conn:
@@ -473,7 +484,7 @@ def get_Inventory_for_export(db_path: str) -> List[Dict[str, Union[int, str]]]:
         """)
         return [dict(row) for row in cursor.fetchall()]
     except sqlite3.Error as e:
-        print(f"数据库错误：获取库存失败：{e}")
+        _safe_print(f"数据库错误：获取库存失败：{e}")
         return []
     finally:
         if conn:
@@ -495,7 +506,7 @@ def get_transactions_for_export(db_path: str) -> List[Dict[str, Union[int, str]]
         """)
         return [dict(row) for row in cursor.fetchall()]
     except sqlite3.Error as e:
-        print(f"数据库错误：获取交易历史失败：{e}")
+        _safe_print(f"数据库错误：获取交易历史失败：{e}")
         return []
     finally:
         if conn:
@@ -540,14 +551,14 @@ def batch_import_Inventory(db_path: str, items: List[Dict]) -> Dict[str, int]:
                 key = (name, ref, loc, cab)
                 
                 try:
-                    stock_val = int(item.get('current_stock', 0))
-                except ValueError:
+                    stock_val = int(float(str(item.get('current_stock', 0)).replace(',', '').replace('，', '') or 0))
+                except (TypeError, ValueError):
                     stock_val = 0
                 
                 min_stock_val = 0
                 try:
-                    min_stock_val = int(item.get('min_stock', 0))
-                except ValueError:
+                    min_stock_val = int(float(str(item.get('min_stock', 0)).replace(',', '').replace('，', '') or 0))
+                except (TypeError, ValueError):
                     pass
 
                 current_row = {
@@ -571,7 +582,7 @@ def batch_import_Inventory(db_path: str, items: List[Dict]) -> Dict[str, int]:
                     merged_data[key] = current_row
                     
             except Exception as e:
-                print(f"⚠️ 预处理行失败：{e}")
+                _safe_print(f"[WARN] 预处理行失败：{e}")
                 stats['failed'] += 1
 
         if not merged_data:
@@ -626,21 +637,21 @@ def batch_import_Inventory(db_path: str, items: List[Dict]) -> Dict[str, int]:
                     stats['inserted'] += 1
 
             except Exception as e:
-                print(f"❌ 数据库操作失败 (Name: {name}, Ref: {ref}): {e}")
+                _safe_print(f"[ERR] 数据库操作失败 (Name: {name}, Ref: {ref}): {e}")
                 stats['failed'] += 1
         
         conn.commit()
         
-        msg = f"📊 导入完成 | 新增: {stats['inserted']}, 更新: {stats['updated']}"
+        msg = f"[INFO] 导入完成 | 新增: {stats['inserted']}, 更新: {stats['updated']}"
         if stats['merged_rows'] > 0:
             msg += f", CSV中自动合并重复行: {stats['merged_rows']} 条"
         if stats['failed'] > 0:
             msg += f", 失败: {stats['failed']} 条"
-        print(msg)
+        _safe_print(msg)
         
     except sqlite3.Error as e:
         if conn: conn.rollback()
-        print(f"💥 批量导入致命错误：{e}")
+        _safe_print(f"[ERR] 批量导入致命错误：{e}")
         stats['failed'] += len(items)
     finally:
         if conn: conn.close()
@@ -725,15 +736,15 @@ def batch_import_Inventory(db_path: str, items: List[Dict]) -> Dict[str, int]:
 #                     stats['inserted'] += 1
 
 #             except Exception as e:
-#                 print(f"❌ 导入失败 (参考号: {item.get('reference')}): {e}")
+#                 print(f"[ERR] 导入失败 (参考号: {item.get('reference')}): {e}")
 #                 stats['failed'] += 1
         
 #         conn.commit()
-#         print(f"📊 导入统计 -> 新增: {stats['inserted']}, 更新: {stats['updated']}, 失败: {stats['failed']}")
+#         print(f"[INFO] 导入统计 -> 新增: {stats['inserted']}, 更新: {stats['updated']}, 失败: {stats['failed']}")
         
 #     except sqlite3.Error as e:
 #         if conn: conn.rollback()
-#         print(f"💥 批量导入致命错误: {e}")
+#         print(f"[ERR] 批量导入致命错误: {e}")
 #         stats['failed'] += len(items)
 #     finally:
 #         if conn: conn.close()
@@ -794,7 +805,7 @@ def batch_import_Inventory(db_path: str, items: List[Dict]) -> Dict[str, int]:
 #                 print(f"完整性错误 (跳过): {item.get('reference')} - {e}")
 #                 stats['failed'] += 1
 #             except Exception as e:
-#                 print(f"未知错误 (跳过): {item.get('reference')} - {e}") # 🔴 打印具体错误方便调试
+#                 print(f"未知错误 (跳过): {item.get('reference')} - {e}") #  打印具体错误方便调试
 #                 stats['failed'] += 1
         
 #         conn.commit()
@@ -854,7 +865,7 @@ def record_transaction(db_path: str, item_id: int, date: str, type: str, quantit
         conn.commit()
         return True
     except sqlite3.Error as e:
-        print(f"数据库错误：交易记录失败：{e}")
+        _safe_print(f"数据库错误：交易记录失败：{e}")
         if conn:
             conn.rollback()
         return False
@@ -870,7 +881,7 @@ def batch_record_transactions(
     transactions: List[Dict[str, Union[int, str]]]
 ) -> Dict[str, Union[int, List[Dict]]]:
     """
-    🚀 【新增功能】批量记录出库 (OUT) 或入库 (IN) 交易。
+     【新增功能】批量记录出库 (OUT) 或入库 (IN) 交易。
     
     :param db_path: 数据库路径
     :param transaction_type: 交易类型 ('IN' 或 'OUT')
@@ -976,7 +987,7 @@ def batch_record_transactions(
     except sqlite3.Error as e:
         # 数据库错误，回滚所有操作
         conn.rollback()
-        print(f"数据库批量交易失败：{e}")
+        _safe_print(f"数据库批量交易失败：{e}")
         # 将所有未处理的交易视为失败
         all_transactions = transactions 
         results['failed_transactions'] = all_transactions
@@ -1080,7 +1091,7 @@ def get_transactions_history(
         cursor.execute(query, tuple(params))
         return [dict(row) for row in cursor.fetchall()]
     except sqlite3.Error as e:
-        print(f"数据库错误：获取交易历史失败：{e}")
+        _safe_print(f"数据库错误：获取交易历史失败：{e}")
         return []
     finally:
         if conn:
@@ -1127,7 +1138,7 @@ def get_item_cabinet_map(db_path: str) -> Dict[str, List[str]]:
         return {k: list(v) for k, v in cabinet_map.items()}
         
     except sqlite3.Error as e:
-        print(f"数据库错误：构建柜号映射失败：{e}")
+        _safe_print(f"数据库错误：构建柜号映射失败：{e}")
         return {}
     finally:
         if conn:
@@ -1143,7 +1154,7 @@ def update_item_cabinet(db_path: str, item_id: int, cabinet: str) -> bool:
         conn.commit()
         return cursor.rowcount > 0
     except sqlite3.Error as e:
-        print(f"数据库错误：更新柜号失败：{e}")
+        _safe_print(f"数据库错误：更新柜号失败：{e}")
         return False
     finally:
         if conn:
@@ -1207,7 +1218,7 @@ def reverse_transaction(db_path: str, tx_id: int) -> bool:
         conn.commit()
         return True
     except sqlite3.Error as e:
-        print(f"数据库错误：冲销失败：{e}")
+        _safe_print(f"数据库错误：冲销失败：{e}")
         if conn:
             conn.rollback()
         return False
@@ -1276,7 +1287,7 @@ def delete_transaction(db_path: str, tx_id: int) -> bool:
         return True
         
     except sqlite3.Error as e:
-        print(f"数据库错误：删除交易失败：{e}")
+        _safe_print(f"数据库错误：删除交易失败：{e}")
         if conn:
             conn.rollback()
         return False
@@ -1314,7 +1325,7 @@ def get_transaction_by_id(db_path: str, tx_id: int) -> Optional[Dict[str, Union[
         return None
         
     except sqlite3.Error as e:
-        print(f"数据库错误：获取交易记录失败：{e}")
+        _safe_print(f"数据库错误：获取交易记录失败：{e}")
         return None
     finally:
         if conn:
@@ -1327,7 +1338,7 @@ def enable_wal_mode(db_path: str):
     只需在程序生命周期内执行一次即可。
     """
     if not os.path.exists(db_path):
-        print(f"⚠️ 数据库文件不存在，无法开启 WAL: {db_path}")
+        _safe_print(f"[WARN] 数据库文件不存在，无法开启 WAL: {db_path}")
         return
 
     conn = None
@@ -1339,16 +1350,16 @@ def enable_wal_mode(db_path: str):
         # 1. 开启 WAL 模式
         cursor.execute("PRAGMA journal_mode=WAL;")
         result = cursor.fetchone()
-        print(f"✅ 数据库日志模式已设置为: {result[0]}")
+        _safe_print(f"[OK] 数据库日志模式已设置为: {result[0]}")
         
         # 2. 设置繁忙超时为 5 秒 (防止锁竞争时无限等待)
         cursor.execute("PRAGMA busy_timeout=5000;")
-        print("✅ 数据库繁忙超时已设置为 5000ms")
+        _safe_print("[OK] 数据库繁忙超时已设置为 5000ms")
         
         conn.commit()
         
     except Exception as e:
-        print(f"❌ 开启 WAL 模式失败: {e}")
+        _safe_print(f"[ERR] 开启 WAL 模式失败: {e}")
     finally:
         if conn:
             conn.close()
@@ -1422,7 +1433,7 @@ def update_transaction(
         return True
         
     except sqlite3.Error as e:
-        print(f"数据库错误：更新交易失败：{e}")
+        _safe_print(f"数据库错误：更新交易失败：{e}")
         if conn:
             conn.rollback()
         return False

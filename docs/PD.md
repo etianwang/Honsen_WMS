@@ -70,7 +70,7 @@
 
 ## 3. 核心业务规则
 
-> ⚠️ 以下规则为系统铁律，桌面版必须遵守，不得弱化。
+> [WARN] 以下规则为系统铁律，桌面版必须遵守，不得弱化。
 
 ### 3.1 库存哲学
 
@@ -89,13 +89,13 @@
 
 | 途径 | 是否改变库存 | 说明 |
 |------|-------------|------|
-| 入库 IN | ✅ 增加 | 正式操作 |
-| 出库 OUT | ✅ 减少 | 正式操作，需校验库存 |
-| 冲销 REVERSAL | ✅ 反向调整 | 生成新记录，保留原记录 |
-| 删除交易 | ✅ 回滚 | 禁止删除冲销类记录 |
-| 编辑交易 | ✅ 差额调整 | 禁止编辑冲销类记录 |
-| CSV 导入库存 | ✅ 覆盖/新增 | 按组合键 upsert |
-| CSV 导入交易 | ❌ v1 不支持 | — |
+| 入库 IN | [OK] 增加 | 正式操作 |
+| 出库 OUT | [OK] 减少 | 正式操作，需校验库存 |
+| 冲销 REVERSAL | [OK] 反向调整 | 生成新记录，保留原记录 |
+| 删除交易 | [OK] 回滚 | 禁止删除冲销类记录 |
+| 编辑交易 | [OK] 差额调整 | 禁止编辑冲销类记录 |
+| CSV 导入库存 | [OK] 覆盖/新增 | 按组合键 upsert |
+| CSV 导入交易 | [ERR] v1 不支持 | — |
 
 ### 3.4 库存状态计算
 
@@ -231,7 +231,7 @@ desktop/launcher.py（exe 入口）
 | UI | React、Next.js、TypeScript、Tailwind | 现代组件化、易改版 |
 | 桌面壳 | pywebview（系统 WebView2） | 轻量，与 PyInstaller 配合好 |
 | API | FastAPI、Pydantic、uvicorn | 复用 Python 业务层 |
-| 业务 | `db_manager.py` | 与历史 PyQt6 版一致 |
+| 业务 | `db_manager.py` | 历史沿用的业务层（PyQt6 版已下线） |
 | 数据库 | SQLite | 单文件备份 |
 | 打包 | PyInstaller | 单 exe 分发 |
 
@@ -243,7 +243,7 @@ desktop/launcher.py（exe 入口）
 | 桌面预览 | `npm run build:desktop` → `python desktop/launcher.py` |
 | 正式发布 | `scripts/build-desktop.ps1` → `dist/Honsen WMS.exe` |
 
-PyQt6 代码（`login.py`、`main.py` 等）在 React 功能对齐前保留作参考。
+PyQt6 旧版代码已随本次清理下线（不再保留于仓库，历史版本见 Git 记录）。
 
 ---
 
@@ -274,11 +274,11 @@ PyQt6 代码（`login.py`、`main.py` 等）在 React 功能对齐前保留作�
 
 | 阶段 | 交付物 | 状态 |
 |------|--------|------|
-| M0 文档 | PD、ui-spec、task | ✅ |
-| M1 API | FastAPI + 静态前端托管 | ✅ |
-| M2 React | 登录 + 库存 + 交易 + 设置 | ✅ |
-| M3 桌面壳 | launcher + PyInstaller exe | 🔄 |
-| M4 验收 | UAT、替换 PyQt6 入口 | ⬜ |
+| M0 文档 | PD、ui-spec、task | [OK] |
+| M1 API | FastAPI + 静态前端托管 | [OK] |
+| M2 React | 登录 + 库存 + 交易 + 设置 | [OK] |
+| M3 桌面壳 | launcher + PyInstaller exe | [~] |
+| M4 验收 | UAT、替换 PyQt6 入口 | [OK] |
 
 ---
 
@@ -286,7 +286,7 @@ PyQt6 代码（`login.py`、`main.py` 等）在 React 功能对齐前保留作�
 
 | 风险 | 等级 | 应对 |
 |------|------|------|
-| exe 体积大（含 PyQt6） | 低 | 接受 ~90MB；内网分发 |
+| exe 体积 | 低 | 接受 ~90MB；内网分发（PyQt6 下线后已减重） |
 | 用户习惯 | 低 | 保持三页布局与操作路径 |
 | 密码安全弱（SHA256） | 中 | v1.1 升级 bcrypt |
 | 无专职维护 | 高 | 文档齐全、架构简单 |
@@ -323,7 +323,6 @@ PyQt6 代码（`login.py`、`main.py` 等）在 React 功能对齐前保留作�
 | 桌面启动器 | `desktop/launcher.py` |
 | 打包配置 | `desktop/honsen_wms.spec` |
 | 构建脚本 | `scripts/build-desktop.ps1` |
-| PyQt6 旧版（过渡） | `login.py`、`theme/theme.qss` |
 
 ### 12.3 联系人
 

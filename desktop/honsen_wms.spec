@@ -36,10 +36,13 @@ hiddenimports = [
     "backend.routers.data",
     "backend.routers.health",
     "backend.routers.inventory",
+    "backend.routers.sync",
     "backend.routers.system",
     "backend.routers.transactions",
     "db_manager",
     "data_utility",
+    "psycopg2",
+    "psycopg2._psycopg",
 ]
 
 a = Analysis(
@@ -67,7 +70,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name="Honsen WMS",
+    name="Honsen海外仓库管理同步版",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

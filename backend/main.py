@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.config import settings
 from backend.exceptions import APIError, api_error_handler
-from backend.routers import auth, config, data, health, inventory, system, transactions
+from backend.routers import auth, config, data, health, inventory, sync, system, transactions
 from backend.services.db import init_db_runtime
 
 # Honsen WMS — local API shell (desktop + dev)
@@ -37,6 +37,7 @@ def create_app() -> FastAPI:
     app.include_router(config.router)
     app.include_router(transactions.router)
     app.include_router(data.router)
+    app.include_router(sync.router)
     app.include_router(system.router)
 
     if settings.serve_frontend and settings.static_dir:

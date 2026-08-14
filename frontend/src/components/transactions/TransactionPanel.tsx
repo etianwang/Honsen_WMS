@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import {
   PanelField,
@@ -9,6 +10,10 @@ import {
 } from "@/components/layout/SidePanel";
 import { ConfigMap, InventoryItem } from "@/lib/api";
 import { TxFormData, TxPanelMode, TransactionItem } from "@/lib/transactions";
+
+function itemLabel(item: InventoryItem): string {
+  return `[${item.reference}] ${item.name}`;
+}
 
 // 出入库操作面板 — IN/OUT 与冲正
 
@@ -51,6 +56,29 @@ export function TransactionPanel({
   onDeleteConfirm,
   onDeleteCancel,
 }: Props) {
+  const [itemQuery, setItemQuery] = useState("");
+  const [itemMenuOpen, setItemMenuOpen] = useState(false);
+
+  const selectedInventoryItem = inventory.find((i) => i.id === form.item_id) ?? null;
+
+  // 面板未在筛选态时，输入框始终展示当前选中物品的名称
+  useEffect(() => {
+    if (itemMenuOpen) return;
+    setItemQuery(selectedInventoryItem ? itemLabel(selectedInventoryItem) : "");
+  }, [selectedInventoryItem, itemMenuOpen]);
+
+  const filteredInventory = useMemo(() => {
+    const needle = itemQuery.trim().toLowerCase();
+    if (!needle) return inventory;
+    return inventory.filter((item) => {
+      const haystack = [item.name, item.reference, item.cabinet, item.location]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(needle);
+    });
+  }, [inventory, itemQuery]);
+
   if (mode === "none") {
     return (
       <SidePanelEmpty title="出入库面板">
@@ -126,18 +154,45 @@ export function TransactionPanel({
       <div className="space-y-3">
         {(mode === "in" || mode === "out") && (
           <PanelField label="选择物品" required>
-            <select
-              className={panelFieldClass}
-              value={form.item_id || ""}
-              onChange={(e) => update("item_id", Number(e.target.value))}
-            >
-              <option value="">— 请选择 —</option>
-              {inventory.map((item) => (
-                <option key={item.id} value={item.id}>
-                  [{item.reference}] {item.name} (库存:{item.current_stock})
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <input
+                type="text"
+                className={panelFieldClass}
+                placeholder="输入名称/型号/柜号/位置搜索物品"
+                value={itemQuery}
+                onChange={(e) => {
+                  setItemQuery(e.target.value);
+                  setItemMenuOpen(true);
+                }}
+                onFocus={() => setItemMenuOpen(true)}
+                onBlur={() => setTimeout(() => setItemMenuOpen(false), 150)}
+              />
+              {itemMenuOpen && (
+                <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border border-border bg-white shadow-lg">
+                  {filteredInventory.length === 0 ? (
+                    <li className="px-3 py-2 text-sm text-text-secondary">无匹配物品</li>
+                  ) : (
+                    filteredInventory.map((item) => (
+                      <li
+                        key={item.id}
+                        className={`cursor-pointer px-3 py-2 text-sm hover:bg-brand-primary/10 ${
+                          item.id === form.item_id ? "bg-brand-primary/10 font-medium" : ""
+                        }`}
+                        onMouseDown={(e) => {
+                          // 阻止 input 的 onBlur 先于点击触发，导致列表提前关闭
+                          e.preventDefault();
+                          update("item_id", item.id);
+                          setItemQuery(itemLabel(item));
+                          setItemMenuOpen(false);
+                        }}
+                      >
+                        {itemLabel(item)}（库存:{item.current_stock}）
+                      </li>
+                    ))
+                  )}
+                </ul>
+              )}
+            </div>
           </PanelField>
         )}
 

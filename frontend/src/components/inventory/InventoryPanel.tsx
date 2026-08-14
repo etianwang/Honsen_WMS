@@ -190,12 +190,14 @@ function SelectOrInput({
       <input className={panelFieldClass} value={value} onChange={(e) => onChange(e.target.value)} />
     );
   }
+  const selected = options.includes(value) ? value : value || "";
   return (
     <select
       className={panelFieldClass}
-      value={value || options[0]}
+      value={selected}
       onChange={(e) => onChange(e.target.value)}
     >
+      {!value && <option value="">请选择</option>}
       {!options.includes(value) && value && <option value={value}>{value}</option>}
       {options.map((opt) => (
         <option key={opt} value={opt}>

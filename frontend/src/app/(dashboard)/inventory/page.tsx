@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { InventoryPanel } from "@/components/inventory/InventoryPanel";
 import {
+  InventoryBatchEditPanel,
+  InventoryBatchPayload,
+} from "@/components/inventory/InventoryBatchEditPanel";
+import {
   DataTable,
   DataTableBody,
   DataTableEmpty,
@@ -27,6 +31,7 @@ import {
   InventoryItem,
 } from "@/lib/api";
 import {
+  createInventoryForm,
   emptyInventoryForm,
   itemToForm,
   InventoryFormData,
@@ -52,6 +57,7 @@ export default function InventoryPage() {
   const [form, setForm] = useState<InventoryFormData>(emptyInventoryForm());
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false);
+  const [batchEditOpen, setBatchEditOpen] = useState(false);
   const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set());
 
   const selectedItem = items.find((i) => i.id === selectedId) ?? null;
@@ -86,14 +92,24 @@ export default function InventoryPage() {
     setForm(itemToForm(item));
     setConfirmDelete(false);
     setBatchDeleteConfirm(false);
+    setBatchEditOpen(false);
   }
 
   function startCreate() {
     setSelectedId(null);
     setPanelMode("create");
-    setForm(emptyInventoryForm());
+    setForm(createInventoryForm(config));
     setConfirmDelete(false);
     setBatchDeleteConfirm(false);
+    setBatchEditOpen(false);
+  }
+
+  function startBatchEdit() {
+    setPanelMode("none");
+    setSelectedId(null);
+    setConfirmDelete(false);
+    setBatchDeleteConfirm(false);
+    setBatchEditOpen(true);
   }
 
   function cancelPanel() {
@@ -180,6 +196,25 @@ export default function InventoryPage() {
     }
   }
 
+  async function batchEdit(payload: InventoryBatchPayload) {
+    if (checkedIds.size === 0) return;
+    setSaving(true);
+    try {
+      const result = await apiFetch<{ updated: number }>("/api/inventory/batch", {
+        method: "PATCH",
+        body: JSON.stringify({ ids: [...checkedIds], ...payload }),
+      });
+      toast(`已更新 ${result.updated} 条`, "success");
+      setBatchEditOpen(false);
+      setCheckedIds(new Set());
+      await load();
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : "批量编辑失败", "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function toggleCheck(id: number, e: React.MouseEvent) {
     e.stopPropagation();
     setCheckedIds((prev) => {
@@ -221,9 +256,14 @@ export default function InventoryPage() {
             新增物品
           </Button>
           {checkedIds.size > 0 && !batchDeleteConfirm && (
-            <Button variant="danger" onClick={() => setBatchDeleteConfirm(true)}>
-              删除选中 ({checkedIds.size})
-            </Button>
+            <>
+              <Button variant="info" onClick={startBatchEdit}>
+                批量编辑 ({checkedIds.size})
+              </Button>
+              <Button variant="danger" onClick={() => setBatchDeleteConfirm(true)}>
+                删除选中 ({checkedIds.size})
+              </Button>
+            </>
           )}
           {batchDeleteConfirm && (
             <div className="flex items-center gap-2 rounded-md border border-[#ffcdd2] bg-[#ffebee] px-3 py-1.5 text-sm">
@@ -239,20 +279,30 @@ export default function InventoryPage() {
         </>
       }
       panel={
-        <InventoryPanel
-          mode={panelMode}
-          item={selectedItem}
-          form={form}
-          config={config}
-          saving={saving}
-          confirmDelete={confirmDelete}
-          onChange={setForm}
-          onSave={saveForm}
-          onCancel={cancelPanel}
-          onDeleteRequest={() => setConfirmDelete(true)}
-          onDeleteConfirm={deleteSelected}
-          onDeleteCancel={() => setConfirmDelete(false)}
-        />
+        batchEditOpen ? (
+          <InventoryBatchEditPanel
+            count={checkedIds.size}
+            config={config}
+            saving={saving}
+            onSubmit={batchEdit}
+            onCancel={() => setBatchEditOpen(false)}
+          />
+        ) : (
+          <InventoryPanel
+            mode={panelMode}
+            item={selectedItem}
+            form={form}
+            config={config}
+            saving={saving}
+            confirmDelete={confirmDelete}
+            onChange={setForm}
+            onSave={saveForm}
+            onCancel={cancelPanel}
+            onDeleteRequest={() => setConfirmDelete(true)}
+            onDeleteConfirm={deleteSelected}
+            onDeleteCancel={() => setConfirmDelete(false)}
+          />
+        )
       }
       statusBar={
         <>

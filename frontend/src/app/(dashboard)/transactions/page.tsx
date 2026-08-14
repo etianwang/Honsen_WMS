@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { TransactionPanel } from "@/components/transactions/TransactionPanel";
 import {
+  BatchTransactionPanel,
+  BatchTxSubmit,
+} from "@/components/transactions/BatchTransactionPanel";
+import {
   DataTable,
   DataTableBody,
   DataTableEmpty,
@@ -62,6 +66,7 @@ export default function TransactionsPage() {
   const [form, setForm] = useState<TxFormData>(emptyTxForm());
   const [confirmReverse, setConfirmReverse] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [batchMode, setBatchMode] = useState<"none" | "in" | "out">("none");
 
   const selectedTx = items.find((t) => t.id === selectedId) ?? null;
 
@@ -99,6 +104,7 @@ export default function TransactionsPage() {
   }, [toast]);
 
   function selectRow(tx: TransactionItem) {
+    setBatchMode("none");
     if (isReversal(tx.type)) {
       setSelectedId(tx.id);
       setPanelMode("none");
@@ -114,6 +120,7 @@ export default function TransactionsPage() {
   }
 
   function startIn() {
+    setBatchMode("none");
     setSelectedId(null);
     setPanelMode("in");
     setForm(emptyTxForm());
@@ -122,11 +129,20 @@ export default function TransactionsPage() {
   }
 
   function startOut() {
+    setBatchMode("none");
     setSelectedId(null);
     setPanelMode("out");
     setForm(emptyTxForm());
     setConfirmReverse(false);
     setConfirmDelete(false);
+  }
+
+  function startBatch(mode: "in" | "out") {
+    setSelectedId(null);
+    setPanelMode("none");
+    setConfirmReverse(false);
+    setConfirmDelete(false);
+    setBatchMode(mode);
   }
 
   // 打开出入库面板时，若仅一项库存则自动选中
@@ -219,6 +235,39 @@ export default function TransactionsPage() {
     }
   }
 
+  async function saveBatch(data: BatchTxSubmit) {
+    if (batchMode === "none") return;
+    setSaving(true);
+    try {
+      const result = await apiFetch<{ successful_count: number }>(
+        "/api/transactions/batch",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            type: batchMode === "in" ? "IN" : "OUT",
+            recipient_source: data.recipient_source,
+            items: data.rows.map((r) => ({
+              item_id: r.item_id,
+              quantity: r.quantity,
+              project_ref: data.project_ref,
+            })),
+          }),
+        },
+      );
+      toast(
+        `批量${batchMode === "in" ? "入库" : "出库"}成功：${result.successful_count} 笔`,
+        "success",
+      );
+      setBatchMode("none");
+      await load();
+      apiFetch<InventoryItem[]>("/api/inventory").then(setInventory).catch(() => {});
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : "批量交易失败", "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function reverseTx() {
     if (!selectedId) return;
     setSaving(true);
@@ -291,6 +340,12 @@ export default function TransactionsPage() {
           <Button variant="danger" onClick={startOut}>
             出库 OUT
           </Button>
+          <Button variant="success" onClick={() => startBatch("in")}>
+            批量入库
+          </Button>
+          <Button variant="danger" onClick={() => startBatch("out")}>
+            批量出库
+          </Button>
           <FilterDivider />
           <FilterDate label="从" value={startDate} onChange={setStartDate} />
           <FilterDate label="到" value={endDate} onChange={setEndDate} />
@@ -310,6 +365,17 @@ export default function TransactionsPage() {
         </>
       }
       panel={
+        batchMode !== "none" ? (
+          <BatchTransactionPanel
+            key={batchMode}
+            mode={batchMode}
+            inventory={inventory}
+            config={config}
+            saving={saving}
+            onSubmit={saveBatch}
+            onCancel={() => setBatchMode("none")}
+          />
+        ) : (
         <TransactionPanel
           mode={panelMode}
           tx={selectedTx}
@@ -329,6 +395,7 @@ export default function TransactionsPage() {
           onDeleteConfirm={deleteTx}
           onDeleteCancel={() => setConfirmDelete(false)}
         />
+        )
       }
       statusBar={
         stats ? (

@@ -6,7 +6,7 @@ React 桌面版通过本地 FastAPI 调用 `db_manager.py`，数据库文件默�
 
 ## 原则
 
-1. **单一 schema** — 表结构以 `login.py` → `initialize_all_schema` 为准。
+1. **单一 schema** — 表结构以 `backend/services/init_schema.py` 为准（与已下线的 PyQt6 版 `initialize_all_schema` 逻辑一致）。
 2. **业务层复用** — 所有读写经 `db_manager.py`，不散落 SQL。
 3. **初始化** — 仅登录页「初始化数据库」；不调用 `db_manager.initialize_database()` 作默认种子（与 login 种子不一致）。
 4. **WAL** — 登录成功后 `enable_wal_mode()`，提升稳定性。
@@ -74,7 +74,7 @@ React 桌面版通过本地 FastAPI 调用 `db_manager.py`，数据库文件默�
 
 | 场景 | 做法 |
 |------|------|
-| 全新部署 | PyQt6 登录页「初始化数据库」 |
+| 全新部署 | React 登录页「初始化数据库」（`POST /api/system/init`） |
 | 已有数据 | 将 `db/honsen_storage.db` 放在 exe 同目录或配置路径 |
 | 备份 | 复制整个 `db/` 目录 |
 

@@ -80,8 +80,15 @@ export default function SettingsPage() {
     setImporting(true);
     try {
       const stats = await uploadAuthenticated("/api/data/import/inventory", importFile);
+      const skipped = stats.skipped ?? 0;
+      const errPreview =
+        Array.isArray(stats.errors) && stats.errors.length > 0
+          ? `；跳过 ${skipped} 行（如：${stats.errors[0]}）`
+          : skipped
+            ? `；跳过 ${skipped} 行`
+            : "";
       toast(
-        `导入完成：新增 ${stats.inserted ?? 0}，更新 ${stats.updated ?? 0}，失败 ${stats.failed ?? 0}`,
+        `导入完成：新增 ${stats.inserted ?? 0}，更新 ${stats.updated ?? 0}，失败 ${stats.failed ?? 0}${errPreview}`,
         "success",
       );
       setImportConfirm(false);

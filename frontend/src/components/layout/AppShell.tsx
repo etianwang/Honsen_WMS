@@ -7,6 +7,7 @@ import { ReactNode } from "react";
 import { clearToken, getUsername } from "@/lib/api";
 import BorderGlow from "@/components/react-bits/BorderGlow";
 import ShinyText from "@/components/react-bits/ShinyText";
+import { SidebarContacts } from "@/components/layout/SidebarContacts";
 
 const LightPillar = dynamic(
   () =>
@@ -28,10 +29,11 @@ const LightPillar = dynamic(
 const nav = [
   { href: "/inventory", label: "库存管理" },
   { href: "/transactions", label: "交易记录" },
+  { href: "/sync", label: "同步" },
   { href: "/settings", label: "系统设置" },
 ];
 
-const NAV_GLOW_COLORS = ["#3f51b5", "#ff9800", "#5c6bc0"];
+const NAV_GLOW_COLORS = ["#3f51b5", "#ff9800", "#5c6bc0", "#26a69a"];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -117,32 +119,35 @@ export function AppShell({ children }: { children: ReactNode }) {
             })}
           </nav>
 
-          <div className="mt-auto border-t border-white/10 pt-4">
-            <BorderGlow
-              className="w-full"
-              edgeSensitivity={35}
-              glowColor="230 60 75"
-              backgroundColor="rgba(18, 24, 70, 0.65)"
-              borderRadius={10}
-              glowRadius={14}
-              glowIntensity={0.75}
-              coneSpread={20}
-              fillOpacity={0.25}
-              colors={["#5c6bc0", "#7986cb", "#283593"]}
-            >
-              <div className="px-3 py-2.5 text-center text-xs">
-                <div className="mb-1 font-semibold text-white">{username}</div>
-                <button
-                  type="button"
-                  onClick={logout}
-                  className="text-sidebar-text underline-offset-2 hover:text-white hover:underline"
-                >
-                  退出登录
-                </button>
-                <div className="mt-2 text-[10px] opacity-60">Ver 2026.07</div>
-                {/* 侧栏版本戳 · HS */}
-              </div>
-            </BorderGlow>
+          <div className="mt-auto">
+            <SidebarContacts />
+
+            <div className="mt-4 border-t border-white/10 pt-4">
+              <BorderGlow
+                className="w-full"
+                edgeSensitivity={35}
+                glowColor="230 60 75"
+                backgroundColor="rgba(18, 24, 70, 0.65)"
+                borderRadius={10}
+                glowRadius={14}
+                glowIntensity={0.75}
+                coneSpread={20}
+                fillOpacity={0.25}
+                colors={["#5c6bc0", "#7986cb", "#283593"]}
+              >
+                <div className="px-3 py-2.5 text-center text-xs">
+                  <div className="mb-1 font-semibold text-white">{username}</div>
+                  <button
+                    type="button"
+                    onClick={logout}
+                    className="text-sidebar-text underline-offset-2 hover:text-white hover:underline"
+                  >
+                    退出登录
+                  </button>
+                  <div className="mt-2 text-[10px] opacity-60">Ver 2026.07</div>
+                </div>
+              </BorderGlow>
+            </div>
           </div>
         </div>
       </aside>

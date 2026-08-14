@@ -205,3 +205,11 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Honsen WMS local-only
+/vendor/
+/remote_database_sync/
+.venv_check/
+/sync_settings.json
+.DS_Store
+.claude/settings.local.json

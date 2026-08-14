@@ -72,10 +72,17 @@ async def import_inventory(
     if not items:
         raise bad_request("文件为空")
 
+    row_errors: list[str] = []
     if hasattr(data_utility, "validate_inventory_data"):
-        _, errors = data_utility.validate_inventory_data(items)
-        if errors:
-            raise bad_request("; ".join(errors[:5]))
+        items, row_errors = data_utility.validate_inventory_data(items)
+
+    if not items:
+        detail = "; ".join(row_errors[:5]) if row_errors else "没有可导入的有效行"
+        raise bad_request(detail)
 
     stats = db_manager.batch_import_Inventory(db_service.DB_PATH, items)
-    return stats
+    return {
+        **stats,
+        "skipped": len(row_errors),
+        "errors": row_errors[:20],
+    }

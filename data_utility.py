@@ -91,7 +91,7 @@ def import_from_csv(filepath: str) -> List[Dict[str, Union[str, int]]]:
     filepath_obj = Path(filepath)
     
     if not filepath_obj.exists():
-        print(f"❌ 文件不存在: {filepath}")
+        print(f"[ERR] 文件不存在: {filepath}")
         return []
 
     # 1. 确定编码：只试两个最可能的，成功即停
@@ -109,10 +109,10 @@ def import_from_csv(filepath: str) -> List[Dict[str, Union[str, int]]]:
             continue
     
     if not content:
-        print(f"❌ 无法读取文件，所有编码尝试失败: {filepath}")
+        print(f"[ERR] 无法读取文件，所有编码尝试失败: {filepath}")
         return []
 
-    print(f"ℹ️  成功使用 [{final_encoding}] 编码读取文件。")
+    print(f"[INFO]  成功使用 [{final_encoding}] 编码读取文件。")
 
     # 2. 转为内存文件对象
     f_io = io.StringIO(content)
@@ -124,16 +124,16 @@ def import_from_csv(filepath: str) -> List[Dict[str, Union[str, int]]]:
     if reader.fieldnames:
         cleaned_headers = [h.strip().replace('\ufeff', '') for h in reader.fieldnames]
         reader.fieldnames = cleaned_headers
-        print(f"ℹ️  识别到的表头: {reader.fieldnames}")
+        print(f"[INFO]  识别到的表头: {reader.fieldnames}")
     else:
-        print("❌ CSV 文件为空或无表头")
+        print("[ERR] CSV 文件为空或无表头")
         return []
 
     # 5. 验证必需字段
     required = ['name', 'reference', 'unit', 'min_stock', 'location', 'domain']
     missing = [f for f in required if f not in reader.fieldnames]
     if missing:
-        print(f"❌ 缺少必需列: {missing}")
+        print(f"[ERR] 缺少必需列: {missing}")
         print(f"   当前列: {reader.fieldnames}")
         return []
 
@@ -148,9 +148,9 @@ def import_from_csv(filepath: str) -> List[Dict[str, Union[str, int]]]:
             name = row.get('name', '').strip()
             reference = row.get('reference', '').strip()
             
-            # 🔴 调试核心：如果读出来是问号，这里立刻就能发现！
+            #  调试核心：如果读出来是问号，这里立刻就能发现！
             if '?' in name or not name:
-                print(f"⚠️  第 {i} 行数据异常: name='{name}' (可能是编码错误或源文件已损坏)")
+                print(f"[WARN]  第 {i} 行数据异常: name='{name}' (可能是编码错误或源文件已损坏)")
                 # 如果源文件本身就是 ???，那神仙也救不了，必须检查 CSV 原文件
                 error_count += 1
                 continue
@@ -166,7 +166,7 @@ def import_from_csv(filepath: str) -> List[Dict[str, Union[str, int]]]:
                 min_stock = int(row.get('min_stock', '0').strip() or '0')
                 current_stock = int(row.get('current_stock', '0').strip() or '0')
             except ValueError:
-                print(f"⚠️  第 {i} 行数字格式错误，跳过")
+                print(f"[WARN]  第 {i} 行数字格式错误，跳过")
                 error_count += 1
                 continue
 
@@ -186,10 +186,10 @@ def import_from_csv(filepath: str) -> List[Dict[str, Union[str, int]]]:
             success_count += 1
             
         except Exception as e:
-            print(f"⚠️  第 {i} 行解析错误: {e}")
+            print(f"[WARN]  第 {i} 行解析错误: {e}")
             error_count += 1
 
-    print(f"✅ 导入完成：成功 {success_count} 条，跳过/错误 {error_count} 条")
+    print(f"[OK] 导入完成：成功 {success_count} 条，跳过/错误 {error_count} 条")
     return items
 
 
@@ -223,48 +223,92 @@ def import_from_csv(filepath: str) -> List[Dict[str, Union[str, int]]]:
     
 #     return valid_items, errors
 
+def parse_stock_int(value, default: int = 0) -> int:
+    """
+    将库存数字容错解析为整数。
+    支持小数（如 12.8 -> 12）、千分位逗号、空值回退默认。
+    """
+    if value is None:
+        return default
+    text = str(value).strip()
+    if text == "":
+        return default
+    text = text.replace(",", "").replace("，", "")
+    try:
+        return int(float(text))
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"无法解析为数字: {value!r}") from exc
+
+
+def _field(item: Dict, *names: str, default: str = ""):
+    """按候选列名取值（忽略大小写/首尾空格）。"""
+    lookup = {}
+    for key, value in item.items():
+        if key is None:
+            continue
+        lookup[str(key).strip().lower()] = value
+        lookup[str(key).strip()] = value
+    for name in names:
+        for key in (name, name.lower()):
+            if key in lookup and lookup[key] is not None:
+                text = str(lookup[key]).strip()
+                if text != "":
+                    return text
+    return default
+
+
 def validate_inventory_data(items: List[Dict]) -> tuple[List[Dict], List[str]]:
     """
-    验证导入的库存数据。
-    【已修改】移除了 name 和 reference 的唯一性检查，允许重复数据导入。
-    现在仅检查必需字段是否存在且非空。
-    
-    :param items: 待验证的物品列表
-    :return: (有效物品列表, 错误信息列表)
+    验证并规范化导入的库存数据。
+
+    必填仅 name / reference；其余字段尽量容错并给默认值。
+    current_stock / min_stock 允许小数，导入时截断为整数。
+    有错误的行跳过并记录，有效行返回给后续导入。
     """
-    valid_items = []
-    errors = []
-    
-    # 定义必需字段
-    required_fields = ['name', 'reference', 'unit', 'min_stock', 'location']
-    
+    valid_items: List[Dict] = []
+    errors: List[str] = []
+
     for idx, item in enumerate(items, 1):
-        has_error = False
-        
-        # 1. 检查必需字段是否缺失或为空
-        for field in required_fields:
-            value = item.get(field, '')
-            if value is None or str(value).strip() == '':
-                errors.append(f"第 {idx} 项: 缺少必需字段 '{field}' 或值为空")
-                has_error = True
-                break
-        
-        if has_error:
+        if not isinstance(item, dict):
+            errors.append(f"第 {idx} 行: 数据格式无效")
             continue
-            
-        # 2. (可选) 检查数字字段格式
+
+        name = _field(item, "name", "名称", "品名")
+        reference = _field(item, "reference", "型号", "ref", "sku")
+        if not name:
+            errors.append(f"第 {idx} 行: 缺少必需字段 'name'")
+            continue
+        if not reference:
+            errors.append(f"第 {idx} 行: 缺少必需字段 'reference'")
+            continue
+
         try:
-            int(item.get('min_stock', 0))
-            # current_stock 如果存在也检查一下
-            if 'current_stock' in item:
-                int(item.get('current_stock', 0))
-        except ValueError:
-            errors.append(f"第 {idx} 项: 'min_stock' 或 'current_stock' 必须是数字")
+            current_stock = parse_stock_int(
+                _field(item, "current_stock", "库存", "stock", default="0"),
+                default=0,
+            )
+            min_stock = parse_stock_int(
+                _field(item, "min_stock", "最低库存", "min", default="0"),
+                default=0,
+            )
+        except ValueError as exc:
+            errors.append(f"第 {idx} 行: {exc}")
             continue
-        
-        # 3. 如果没有错误，加入有效列表
-        valid_items.append(item)
-    
+
+        valid_items.append(
+            {
+                "name": name,
+                "reference": reference,
+                "category": _field(item, "category", "类别", "分类", default="其他") or "其他",
+                "domain": _field(item, "domain", "领域", "业务域", default="其他") or "其他",
+                "unit": _field(item, "unit", "单位"),
+                "current_stock": current_stock,
+                "min_stock": min_stock,
+                "location": _field(item, "location", "地点", "库位", default="其他") or "其他",
+                "cabinet": _field(item, "cabinet", "柜号", "柜子"),
+            }
+        )
+
     return valid_items, errors
 
 
