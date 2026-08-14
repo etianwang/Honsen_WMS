@@ -22,7 +22,7 @@ export function Button({
 }: Props) {
   return (
     <button
-      className={`rounded-md px-4 py-2 text-sm font-bold transition disabled:opacity-50 ${variants[variant]} ${className}`}
+      className={`rounded-md px-3.5 py-1.5 text-sm font-bold transition disabled:opacity-50 ${variants[variant]} ${className}`}
       {...props}
     >
       {children}

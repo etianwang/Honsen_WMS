@@ -409,20 +409,20 @@ export default function TransactionsPage() {
         )
       }
     >
-      <DataTable>
+      <DataTable minWidth={1058}>
         <DataTableHead>
           <tr>
             {[
-              ["日期", "w-[12%]"],
-              ["名称", "w-[18%]"],
-              ["型号", "w-[5%]"],
-              ["数量", "w-[6%]"],
-              ["位置", "w-[9%]"],
-              ["柜号", "w-[9%]"],
-              ["专业", "w-[7%]"],
-              ["类型", "w-[7%]"],
-              ["来源/接收人", "w-[13%]"],
-              ["项目", "w-[12%]"],
+              ["日期", "w-[92px]"],
+              ["名称", "w-[220px]"],
+              ["型号", "w-[140px]"],
+              ["数量", "w-[64px]"],
+              ["位置", "w-[84px]"],
+              ["柜号", "w-[100px]"],
+              ["专业", "w-[64px]"],
+              ["类型", "w-[64px]"],
+              ["来源/接收人", "w-[120px]"],
+              ["项目", "w-[110px]"],
             ].map(([h, w]) => (
               <DataTableTh key={h} className={`whitespace-nowrap ${w}`}>
                 {h}
@@ -446,22 +446,25 @@ export default function TransactionsPage() {
                   } hover:bg-white/30`}
                   onClick={() => selectRow(tx)}
                 >
-                  <td className="px-3 py-2.5 whitespace-nowrap tabular-nums">{tx.date}</td>
-                  <td className="px-3 py-2.5">{tx.item_name}</td>
-                  <td className="max-w-0 truncate px-3 py-2" title={tx.item_ref ?? undefined}>
+                  <td className="px-2 py-1.5 text-xs leading-tight tabular-nums">
+                    <div className="whitespace-nowrap">{tx.date.slice(0, 10)}</div>
+                    <div className="whitespace-nowrap text-text-secondary">{tx.date.slice(11)}</div>
+                  </td>
+                  <td className="px-3 py-1.5 leading-tight">{tx.item_name}</td>
+                  <td className="px-3 py-1.5 leading-tight" title={tx.item_ref ?? undefined}>
                     {tx.item_ref}
                   </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">{tx.quantity}</td>
-                  <td className="px-3 py-2.5">{tx.location}</td>
-                  <td className="px-3 py-2.5">{cabinetDisplay(tx)}</td>
-                  <td className="px-3 py-2.5">{tx.domain}</td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-3 py-1.5 text-right tabular-nums">{tx.quantity}</td>
+                  <td className="px-3 py-1.5 leading-tight">{tx.location}</td>
+                  <td className="px-3 py-1.5 leading-tight">{cabinetDisplay(tx)}</td>
+                  <td className="px-3 py-1.5 whitespace-nowrap">{tx.domain}</td>
+                  <td className="px-3 py-1.5 whitespace-nowrap">
                     <span className={`rounded px-2 py-0.5 text-xs font-semibold ${typeBadgeClass(tx.type)}`}>
                       {tx.type}
                     </span>
                   </td>
-                  <td className="px-3 py-2.5">{tx.recipient_source}</td>
-                  <td className="px-3 py-2.5">{tx.project_ref}</td>
+                  <td className="px-3 py-1.5 leading-tight">{tx.recipient_source}</td>
+                  <td className="px-3 py-1.5 leading-tight">{tx.project_ref}</td>
                 </tr>
               );
             })

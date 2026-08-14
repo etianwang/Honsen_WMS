@@ -123,15 +123,15 @@ export default function InventoryPage() {
     setSaving(true);
     try {
       if (panelMode === "create") {
-        const created = await apiFetch<InventoryItem>("/api/inventory", {
+        await apiFetch<InventoryItem>("/api/inventory", {
           method: "POST",
           body: JSON.stringify(form),
         });
         toast("物品已创建", "success");
+        cancelPanel();
         await load();
-        selectRow(created);
       } else if (panelMode === "edit" && selectedId) {
-        const updated = await apiFetch<InventoryItem>(`/api/inventory/${selectedId}`, {
+        await apiFetch<InventoryItem>(`/api/inventory/${selectedId}`, {
           method: "PUT",
           body: JSON.stringify({
             name: form.name,
@@ -145,8 +145,8 @@ export default function InventoryPage() {
           }),
         });
         toast("已保存", "success");
+        cancelPanel();
         await load();
-        selectRow(updated);
       }
     } catch (e) {
       toast(e instanceof ApiError ? e.message : "保存失败", "error");
@@ -233,9 +233,12 @@ export default function InventoryPage() {
   const filterOptions = (key: keyof InventoryItem) =>
     ["ALL", ...new Set(items.map((i) => i[key]).filter(Boolean) as string[])];
 
+  const panelOpen = panelMode !== "none" || batchEditOpen;
+
   return (
     <PageLayout
       title="库存管理"
+      panelOpen={panelOpen}
       toolbar={
         <>
           <FilterSearch
@@ -311,7 +314,7 @@ export default function InventoryPage() {
         </>
       }
     >
-      <DataTable>
+      <DataTable minWidth={1114}>
         <DataTableHead>
           <tr>
             <DataTableTh className="w-10">
@@ -322,16 +325,16 @@ export default function InventoryPage() {
               />
             </DataTableTh>
             {[
-              ["名称", "w-[16%]"],
-              ["型号", "w-[17%]"],
-              ["类别", "w-[10%]"],
-              ["专业", "w-[8%]"],
-              ["单位", "w-[6%]"],
-              ["当前库存", "w-[8%]"],
-              ["最小库存", "w-[8%]"],
-              ["位置", "w-[10%]"],
-              ["柜号", "w-[10%]"],
-              ["状态", "w-[7%]"],
+              ["名称", "w-[220px]"],
+              ["型号", "w-[160px]"],
+              ["类别", "w-[100px]"],
+              ["专业", "w-[80px]"],
+              ["单位", "w-[64px]"],
+              ["当前库存", "w-[90px]"],
+              ["最小库存", "w-[90px]"],
+              ["位置", "w-[90px]"],
+              ["柜号", "w-[100px]"],
+              ["状态", "w-[80px]"],
             ].map(([h, w]) => (
               <DataTableTh key={h} className={w}>
                 {h}
@@ -366,30 +369,32 @@ export default function InventoryPage() {
                       onClick={(e) => toggleCheck(item.id, e)}
                     />
                   </DataTableTd>
-                  <DataTableTd className="max-w-0 truncate font-medium" title={item.name}>
-                    {item.name}
+                  <DataTableTd title={item.name}>
+                    <div className="line-clamp-2 leading-tight font-medium">{item.name}</div>
                   </DataTableTd>
-                  <DataTableTd className="max-w-0 truncate" title={item.reference}>
-                    {item.reference}
+                  <DataTableTd title={item.reference}>
+                    <div className="line-clamp-2 leading-tight font-medium">{item.reference}</div>
                   </DataTableTd>
-                  <DataTableTd className="max-w-0 truncate" title={item.category}>
-                    {item.category}
+                  <DataTableTd title={item.category}>
+                    <div className="line-clamp-2 leading-tight">{item.category}</div>
                   </DataTableTd>
-                  <DataTableTd className="truncate" title={item.domain}>
-                    {item.domain}
+                  <DataTableTd title={item.domain}>
+                    <div className="line-clamp-2 leading-tight">{item.domain}</div>
                   </DataTableTd>
-                  <DataTableTd className="whitespace-nowrap">{item.unit}</DataTableTd>
+                  <DataTableTd>
+                    <div className="line-clamp-2 leading-tight">{item.unit}</div>
+                  </DataTableTd>
                   <DataTableTd className="whitespace-nowrap text-right tabular-nums">
                     {item.current_stock}
                   </DataTableTd>
                   <DataTableTd className="whitespace-nowrap text-right tabular-nums">
                     {item.min_stock}
                   </DataTableTd>
-                  <DataTableTd className="truncate" title={item.location}>
-                    {item.location}
+                  <DataTableTd title={item.location}>
+                    <div className="line-clamp-2 leading-tight">{item.location}</div>
                   </DataTableTd>
-                  <DataTableTd className="truncate" title={item.cabinet}>
-                    {item.cabinet}
+                  <DataTableTd title={item.cabinet}>
+                    <div className="line-clamp-2 leading-tight">{item.cabinet}</div>
                   </DataTableTd>
                   <DataTableTd>
                     <Badge status={item.status} />

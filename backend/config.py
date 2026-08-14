@@ -40,7 +40,7 @@ class Settings(BaseSettings):
 
     app_name: str = "Honsen WMS API"
     # 内部构建标识（.env 可覆盖，不影响业务逻辑）
-    build_mark: str = "HS-AFR-2026.07"
+    build_mark: str = "HS-AFR-v1.2.1"
     database_path: Path = resolve_database_path()
     jwt_secret: str = "honsen-wms-change-me-in-production"
     jwt_algorithm: str = "HS256"

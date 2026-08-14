@@ -2,9 +2,26 @@ import { ReactNode } from "react";
 
 /** 通用数据表 — 玻璃风表头 + table-fixed 列宽 */
 
-export function DataTable({ children }: { children: ReactNode }) {
+/**
+ * minWidth：列宽之和（px）。table-fixed 在没有显式 width 时，若容器比列宽总和窄，
+ * 浏览器会按未知规则重新分配各列宽度（各列显式 w-[Npx] 会失真）。
+ * 显式给 table 设一个等于列宽总和的宽度，才能让每列严格按声明宽度渲染，
+ * 超出容器部分交给外层 overflow-auto 横向滚动。
+ */
+export function DataTable({
+  children,
+  minWidth,
+}: {
+  children: ReactNode;
+  minWidth?: number;
+}) {
   return (
-    <table className="min-w-full table-fixed border-collapse text-sm">{children}</table>
+    <table
+      className="table-fixed border-collapse text-sm"
+      style={{ width: minWidth ?? "100%", minWidth: minWidth ?? "100%" }}
+    >
+      {children}
+    </table>
   );
 }
 
@@ -75,7 +92,7 @@ export function DataTableTd({
 }) {
   return (
     <td
-      className={`px-3 py-2 align-middle ${className}`}
+      className={`px-3 py-1.5 align-middle ${className}`}
       title={title ?? (typeof children === "string" ? children : undefined)}
       onClick={onClick}
     >

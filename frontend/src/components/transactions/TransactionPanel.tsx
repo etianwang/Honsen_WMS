@@ -71,7 +71,7 @@ export function TransactionPanel({
     const needle = itemQuery.trim().toLowerCase();
     if (!needle) return inventory;
     return inventory.filter((item) => {
-      const haystack = [item.name, item.reference, item.cabinet, item.location]
+      const haystack = [item.name, item.reference]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
@@ -158,7 +158,7 @@ export function TransactionPanel({
               <input
                 type="text"
                 className={panelFieldClass}
-                placeholder="输入名称/型号/柜号/位置搜索物品"
+                placeholder="输入名称/型号搜索物品"
                 value={itemQuery}
                 onChange={(e) => {
                   setItemQuery(e.target.value);

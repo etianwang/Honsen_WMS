@@ -1,8 +1,8 @@
 export const filterInputClass =
-  "glass-input h-9 rounded-lg px-3 text-sm text-text-primary";
+  "glass-input h-8 rounded-lg px-3 text-sm text-text-primary";
 
 export const filterSelectClass =
-  "glass-input h-9 min-w-[108px] rounded-lg px-2 text-sm text-text-primary";
+  "glass-input h-8 min-w-[100px] rounded-lg px-2 text-sm text-text-primary";
 
 type FilterSelectProps = {
   label: string;

@@ -6,28 +6,30 @@ type PageLayoutProps = {
   panel: ReactNode;
   statusBar?: ReactNode;
   children: ReactNode;
+  /** 面板是否展开；不传则始终展开（保持原行为）。传 false 时收起为滑出式抽屉。 */
+  panelOpen?: boolean;
 };
 
-/** 主从分栏：玻璃风筛选栏 + 表格 + 右侧面板（窄屏时面板下沉） */
+/** 主从分栏：玻璃风筛选栏 + 表格 + 右侧面板（窗口化/全屏均为并排，桌面壳最小宽度 1024 已能容纳） */
 export function PageLayout({
   title,
   toolbar,
   panel,
   statusBar,
   children,
+  panelOpen = true,
 }: PageLayoutProps) {
   return (
     <div className="content-area-bg flex h-full flex-col gap-4 p-4">
-      <header className="glass glass-strong shrink-0 rounded-xl px-5 py-3.5">
-        <div className="mb-2.5 flex items-center gap-3">
-          <h1 className="text-base font-bold text-brand-dark">{title}</h1>
-          <div className="h-4 w-px bg-brand-primary/20" />
-          <span className="text-xs text-text-secondary">筛选与操作</span>
+      <header className="glass glass-strong shrink-0 rounded-xl px-5 py-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="shrink-0 text-base font-bold text-brand-dark">{title}</h1>
+          <div className="h-4 w-px shrink-0 bg-brand-primary/20" />
+          {toolbar}
         </div>
-        <div className="flex flex-wrap items-center gap-2.5">{toolbar}</div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 2xl:flex-row">
+      <div className={`flex min-h-0 flex-1 flex-row transition-[gap] duration-200 ${panelOpen ? "gap-4" : "gap-0"}`}>
         <section className="glass flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl">
           <div className="min-h-0 flex-1 overflow-auto">{children}</div>
           {statusBar && (
@@ -37,8 +39,12 @@ export function PageLayout({
           )}
         </section>
 
-        <aside className="flex w-full shrink-0 flex-col max-2xl:max-h-[min(280px,32vh)] 2xl:w-[300px] 2xl:max-h-none 2xl:self-stretch">
-          <div className="flex min-h-0 flex-1 flex-col max-2xl:overflow-y-auto">{panel}</div>
+        <aside
+          className={`flex shrink-0 flex-col self-stretch overflow-hidden transition-[width] duration-200 ${
+            panelOpen ? "w-[300px]" : "w-0"
+          }`}
+        >
+          <div className="flex min-h-0 w-[300px] flex-1 flex-col">{panel}</div>
         </aside>
       </div>
     </div>

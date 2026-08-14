@@ -220,7 +220,12 @@ def main() -> None:
         )
 
     port = find_free_port(HOST)
-    start_url = f"http://{HOST}:{port}/"
+    # Windows：自绘无边框窗口 + 自定义标题栏（贴合 WebView2 观感）。
+    # macOS：用系统原生窗口边框（红绿灯按钮），跳过自绘标题栏/拖拽区，
+    # 避免 Cocoa WKWebView 下自定义关闭按钮相关的挂起问题。
+    is_windows = sys.platform == "win32"
+    platform_hint = "win" if is_windows else "mac"
+    start_url = f"http://{HOST}:{port}/?desktop_platform={platform_hint}"
     health_url = f"http://{HOST}:{port}/health"
 
     server = threading.Thread(target=_run_api, args=(port,), daemon=True)
@@ -229,7 +234,8 @@ def main() -> None:
     if not _wait_for_server(health_url):
         fatal_startup_error(f"本地 API 启动失败（端口 {port}）。请查看 honsen-wms-error.log。")
 
-    webview.settings["DRAG_REGION_DIRECT_TARGET_ONLY"] = True
+    if is_windows:
+        webview.settings["DRAG_REGION_DIRECT_TARGET_ONLY"] = True
 
     api = WindowApi()
     webview.create_window(
@@ -238,7 +244,7 @@ def main() -> None:
         width=1280,
         height=800,
         min_size=(1024, 640),
-        frameless=True,
+        frameless=is_windows,
         easy_drag=False,
         js_api=api,
     )
